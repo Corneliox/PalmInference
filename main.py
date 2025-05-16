@@ -82,35 +82,84 @@ def stop_stream():
     streaming = False
     return jsonify({"status": "stream stopped"})
 
+# Ver 1
 # @app.route('/capture', methods=['POST'])
 # def capture():
-    global last_frame
-    with frame_lock:
-        if last_frame is None:
-            return jsonify({"error": "No frame available"}), 500
-        frame = last_frame.copy()
+    # global last_frame
+    # with frame_lock:
+    #     if last_frame is None:
+    #         return jsonify({"error": "No frame available"}), 500
+    #     frame = last_frame.copy()
 
-    try:
-        results = model(frame)[0]
-        line_count = 0
-        for box in results.boxes:
-            cls_id = int(box.cls)
-            name = results.names[cls_id]
-            if name.lower() == "line":
-                line_count += 1
+    # try:
+    #     results = model(frame)[0]
+    #     line_count = 0
+    #     for box in results.boxes:
+    #         cls_id = int(box.cls)
+    #         name = results.names[cls_id]
+    #         if name.lower() == "line":
+    #             line_count += 1
 
-        annotated = results.plot()
-        ramalan = interpret_lines(line_count)
+    #     annotated = results.plot()
+    #     ramalan = interpret_lines(line_count)
 
-        _, buffer = cv2.imencode('.jpg', annotated)
-        encoded_img = base64.b64encode(buffer).decode('utf-8')
+    #     _, buffer = cv2.imencode('.jpg', annotated)
+    #     encoded_img = base64.b64encode(buffer).decode('utf-8')
 
-        return jsonify({
-            "image": encoded_img,
-            "ramalan": ramalan
-        })
-    except Exception as e:
-        return jsonify({"error": f"Processing failed: {e}"}), 500
+    #     return jsonify({
+    #         "image": encoded_img,
+    #         "ramalan": ramalan
+    #     })
+    # except Exception as e:
+    #     return jsonify({"error": f"Processing failed: {e}"}), 500
+
+#Ver 2
+# @app.route('/capture', methods=['POST'])
+# def capture():
+    # global last_frame
+    # with frame_lock:
+    #     if last_frame is None:
+    #         return jsonify({"error": "No frame available"}), 500
+    #     frame = last_frame.copy()
+
+    # try:
+    #     results = model(frame)[0]
+    #     line_count = 0
+    #     lines_info = []  # To store line details: name and position
+
+    #     for box, cls_id in zip(results.boxes.xyxy, results.boxes.cls):
+    #         name = results.names[int(cls_id)]
+    #         if name.lower() in ["feel", "brain", "life"]:  # Or just check == "line" if that's your class
+    #             line_count += 1
+    #             x1, y1, x2, y2 = box.tolist()
+    #             lines_info.append({
+    #                 "name": name,
+    #                 "x1": int(x1),
+    #                 "y1": int(y1),
+    #                 "x2": int(x2),
+    #                 "y2": int(y2),
+    #                 "center": {
+    #                     "x": int((x1 + x2) / 2),
+    #                     "y": int((y1 + y2) / 2)
+    #                 }
+    #             })
+
+    #     annotated = results.plot()
+    #     ramalan = interpret_lines(line_count)
+
+    #     _, buffer = cv2.imencode('.jpg', annotated)
+    #     encoded_img = base64.b64encode(buffer).decode('utf-8')
+
+    #     return jsonify({
+    #         "image": encoded_img,
+    #         "ramalan": ramalan,
+    #         "line_data": lines_info
+    #     })
+
+    # except Exception as e:
+    #     return jsonify({"error": f"Processing failed: {e}"}), 500
+
+#Ver 3
 @app.route('/capture', methods=['POST'])
 def capture():
     global last_frame
@@ -121,36 +170,60 @@ def capture():
 
     try:
         results = model(frame)[0]
-        line_count = 0
-        lines_info = []  # To store line details: name and position
+        line_data = []
 
-        for box, cls_id in zip(results.boxes.xyxy, results.boxes.cls):
-            name = results.names[int(cls_id)]
-            if name.lower() in ["feel", "brain", "life"]:  # Or just check == "line" if that's your class
-                line_count += 1
-                x1, y1, x2, y2 = box.tolist()
-                lines_info.append({
+        for box in results.boxes:
+            cls_id = int(box.cls)
+            name = results.names[cls_id].lower()
+            if name in ["feel", "life", "brain"]:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
+                line_data.append({
                     "name": name,
-                    "x1": int(x1),
-                    "y1": int(y1),
-                    "x2": int(x2),
-                    "y2": int(y2),
-                    "center": {
-                        "x": int((x1 + x2) / 2),
-                        "y": int((y1 + y2) / 2)
-                    }
+                    "x1": x1,
+                    "x2": x2,
+                    "y1": y1,
+                    "y2": y2,
+                    "center": {"x": center_x, "y": center_y}
                 })
 
-        annotated = results.plot()
-        ramalan = interpret_lines(line_count)
+        # Calculate hand span from feel and brain line only
+        x_extremes = [d["x1"] for d in line_data if d["name"] in ["feel", "brain"]] + \
+                     [d["x2"] for d in line_data if d["name"] in ["feel", "brain"]]
+        if not x_extremes:
+            return jsonify({"error": "No valid line detections"}), 500
+        hand_span = max(x_extremes) - min(x_extremes)
 
+        def calc_line_metrics(line):
+            length = ((line["x2"] - line["x1"]) ** 2 + (line["y2"] - line["y1"]) ** 2) ** 0.5
+            y_shape = abs(line["y2"] - line["y1"]) / hand_span
+            norm_length = length / hand_span
+            return norm_length, y_shape
+
+        personality = {}
+        for line in line_data:
+            norm_len, y_shape = calc_line_metrics(line)
+            if line["name"] == "life":
+                personality["life"] = "🔥 Energetic" if norm_len > 0.5 else "🧩 Meticulous"
+            elif line["name"] == "feel":
+                personality["heart"] = (
+                    "💖 Expressive, " if norm_len > 0.5 else "💭 Reserved, "
+                ) + ("🧠 Logical" if y_shape < 0.3 else "💓 Emotional")
+            elif line["name"] == "brain":
+                personality["head"] = (
+                    "📚 Curious, " if norm_len > 0.5 else "🎯 Practical, "
+                ) + ("🖌 Creative" if y_shape > 0.3 else "🔍 Logical")
+
+        # Annotated image
+        annotated = results.plot()
         _, buffer = cv2.imencode('.jpg', annotated)
         encoded_img = base64.b64encode(buffer).decode('utf-8')
 
         return jsonify({
             "image": encoded_img,
-            "ramalan": ramalan,
-            "line_data": lines_info
+            "line_data": line_data,
+            "personality": personality
         })
 
     except Exception as e:
