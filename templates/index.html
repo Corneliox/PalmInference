@@ -27,7 +27,6 @@
   <div id="result-area" class="mt-6 w-full max-w-lg bg-gray-800 p-4 rounded-lg shadow text-sm whitespace-pre-wrap hidden">
     <h2 class="text-lg font-semibold mb-2">🔍 Hasil Ramalan:</h2>
     <div id="ramalan-text" class="text-base leading-relaxed space-y-2 mb-4"></div>
-    <!-- <pre id="ramalan-text" class="text-base leading-relaxed whitespace-pre-wrap mb-4"></pre> -->
     <img id="result-img" class="mt-4 w-full rounded-lg" />
   </div>
 
@@ -68,16 +67,42 @@
       }
 
       const { personality, image } = data;
-
       let html = '';
-      if (personality.life) {
-        html += `<p><strong>🧬 Life Line:</strong> ${personality.life}</p>`;
+
+
+      // function formatLine(titleEmoji, lineName, traitsArray) {
+      //   let block = `<div class="mb-3"><p class="mb-1 font-semibold text-white">${titleEmoji} ${lineName}</p>`;
+      //   traitsArray.forEach(trait => {
+      //     block += `<div class="ml-4 mb-2">
+      //                 <p class="text-indigo-400 font-semibold">🔸 <span class="text-blue-300">${trait.result}</span></p>\n<p class="text-gray-300 text-sm ml-6">  ${trait.explanation}</p>
+      //               </div>`;
+      //   });
+      //   block += `</div>`;
+      //   return block;
+      // }
+
+      function formatLine(titleEmoji, lineName, traitsArray) {
+        let block = `<div class="mb-4 px-4 py-2 bg-gray-800 rounded-md text-white whitespace-pre-wrap font-mono text-sm">`;
+        block += `${titleEmoji} ${lineName}\n`;
+
+        traitsArray.forEach(trait => {
+          block += `\t🔸 ${trait.result}\n\t  ${trait.explanation}\n\n`;
+        });
+
+        block += `</div>`;
+        return block;
       }
-      if (personality.heart) {
-        html += `<p><strong>💖 Heart Line:</strong> ${personality.heart}</p>`;
+
+
+
+      if (personality.life && Array.isArray(personality.life)) {
+        html += formatLine("🌱", "Life Line", personality.life);
       }
-      if (personality.head) {
-        html += `<p><strong>🧠 Head Line:</strong> ${personality.head}</p>`;
+      if (personality.heart && Array.isArray(personality.heart)) {
+        html += formatLine("💓", "Heart Line", personality.heart);
+      }
+      if (personality.head && Array.isArray(personality.head)) {
+        html += formatLine("🧠", "Head Line", personality.head);
       }
 
       resultText.innerHTML = html;
