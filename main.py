@@ -1,9 +1,9 @@
+from flask import Flask, render_template, Response
 import cv2
-import gradio as gr
 from ultralytics import YOLO
 
-# Load your YOLO model
-model = YOLO("palm.pt")  # Replace with your custom trained model
+app = Flask(__name__)
+model = YOLO("palm.pt")  # Replace with your trained model
 
 def interpret_lines(line_count):
     if line_count >= 25:
@@ -17,29 +17,47 @@ def interpret_lines(line_count):
     else:
         return "🔕 Cinta? Apa itu? Kayaknya kamu udah LDR sama jodoh sejak lahir.\n💤 Hidupmu tenang... terlalu tenang, kayak WiFi tetangga yang dikunci."
 
-# Live inference function
-def detect_and_display(frame):
-    results = model(frame)[0]
-    line_count = 0
-    for box in results.boxes:
-        cls_id = int(box.cls)
-        name = results.names[cls_id]
-        if name.lower() == "line":
-            line_count += 1
+def generate_frames():
+    cap = cv2.VideoCapture(0)
 
-    annotated_frame = results.plot()
-    ramalan = interpret_lines(line_count)
+    while True:
+        success, frame = cap.read()
+        if not success:
+            break
 
-    # Display text at the top
-    y0 = 20
-    for i, line in enumerate(ramalan.split("\n")):
-        cv2.putText(annotated_frame, line, (10, y0 + i * 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+        results = model(frame)[0]
+        line_count = 0
+        for box in results.boxes:
+            cls_id = int(box.cls)
+            name = results.names[cls_id]
+            if name.lower() == "line":
+                line_count += 1
 
-    return annotated_frame
+        annotated_frame = results.plot()
+        ramalan = interpret_lines(line_count)
 
-# Launch Gradio interface
-gr.Interface(fn=detect_and_display,
-             inputs=gr.Image(source="webcam", streaming=True),
-             outputs="image",
-             live=True).launch()
+        # Display ramalan text
+        y0 = 30
+        for i, line in enumerate(ramalan.split("\n")):
+            cv2.putText(annotated_frame, line, (10, y0 + i * 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+
+        ret, buffer = cv2.imencode('.jpg', annotated_frame)
+        frame = buffer.tobytes()
+
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+    cap.release()
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+if __name__ == "__main__":
+    app.run(debug=True)
