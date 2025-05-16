@@ -1,10 +1,36 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Live Palm Line Detector</title>
+    <meta charset="UTF-8">
+    <title>Ramalan Garis Tangan 💫</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>📷 Ramalan Cinta dari Garis Tangan 💘</h1>
-    <img src="{{ url_for('video_feed') }}" width="640" height="480">
+    <div class="container">
+        <h1>🔮 Ramalan Cinta dari Garis Tangan</h1>
+        <div class="video-container">
+            <img id="videoFeed" src="{{ url_for('video_feed') }}" alt="Live Feed">
+            <button id="captureButton">📸 Jepret</button>
+        </div>
+
+        <div class="result">
+            <h2>📜 Hasil Ramalan</h2>
+            <img id="capturedImage" src="" alt="Hasil Jepretan" style="display: none;">
+            <p id="ramalanText"></p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById("captureButton").addEventListener("click", async () => {
+            const response = await fetch("/capture", { method: "POST" });
+            const data = await response.json();
+
+            const img = document.getElementById("capturedImage");
+            img.src = "data:image/jpeg;base64," + data.image;
+            img.style.display = "block";
+
+            document.getElementById("ramalanText").innerText = data.ramalan;
+        });
+    </script>
 </body>
 </html>

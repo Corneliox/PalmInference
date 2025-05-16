@@ -1,9 +1,12 @@
-from flask import Flask, render_template, Response
+from flask import Flask, render_template, Response, request, jsonify
 import cv2
+import base64
+import numpy as np
 from ultralytics import YOLO
 
 app = Flask(__name__)
-model = YOLO("palm.pt")  # Replace with your trained model
+model = YOLO("palm.pt")
+cap = cv2.VideoCapture(0)
 
 def interpret_lines(line_count):
     if line_count >= 25:
@@ -18,37 +21,18 @@ def interpret_lines(line_count):
         return "🔕 Cinta? Apa itu? Kayaknya kamu udah LDR sama jodoh sejak lahir.\n💤 Hidupmu tenang... terlalu tenang, kayak WiFi tetangga yang dikunci."
 
 def generate_frames():
-    cap = cv2.VideoCapture(0)
-
     while True:
         success, frame = cap.read()
         if not success:
             break
 
         results = model(frame)[0]
-        line_count = 0
-        for box in results.boxes:
-            cls_id = int(box.cls)
-            name = results.names[cls_id]
-            if name.lower() == "line":
-                line_count += 1
-
-        annotated_frame = results.plot()
-        ramalan = interpret_lines(line_count)
-
-        # Display ramalan text
-        y0 = 30
-        for i, line in enumerate(ramalan.split("\n")):
-            cv2.putText(annotated_frame, line, (10, y0 + i * 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-
-        ret, buffer = cv2.imencode('.jpg', annotated_frame)
+        annotated = results.plot()
+        ret, buffer = cv2.imencode('.jpg', annotated)
         frame = buffer.tobytes()
 
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
-    cap.release()
 
 @app.route('/')
 def index():
@@ -58,6 +42,31 @@ def index():
 def video_feed():
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/capture', methods=['POST'])
+def capture():
+    success, frame = cap.read()
+    if not success:
+        return jsonify({"error": "Failed to capture image"}), 500
+
+    results = model(frame)[0]
+    line_count = 0
+    for box in results.boxes:
+        cls_id = int(box.cls)
+        name = results.names[cls_id]
+        if name.lower() == "line":
+            line_count += 1
+
+    annotated = results.plot()
+    ramalan = interpret_lines(line_count)
+
+    _, buffer = cv2.imencode('.jpg', annotated)
+    encoded_img = base64.b64encode(buffer).decode('utf-8')
+
+    return jsonify({
+        "image": encoded_img,
+        "ramalan": ramalan
+    })
 
 if __name__ == "__main__":
     app.run(debug=True)
