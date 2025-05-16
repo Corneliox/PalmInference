@@ -21,17 +21,30 @@ if not cap.isOpened():
 last_frame = None
 frame_lock = threading.Lock()
 
-def interpret_lines(line_count):
-    if line_count >= 25:
-        return "❤ Percintaanmu rumit seperti sinetron 300 episode.\n🌀 Alur hidupmu penuh plot twist, cocok jadi drama Netflix."
-    elif 15 <= line_count < 25:
-        return "💘 Kamu tipe bucin yang suka bilang 'terserah' tapi ngambek diam-diam.\n📈 Hidupmu naik turun, tapi kamu tetap senyum kayak nggak ada apa-apa."
-    elif 8 <= line_count < 15:
-        return "💞 Kamu jago PDKT, tapi suka kejebak zona teman.\n📚 Hidupmu seperti skripsi: ditunda-tunda tapi akhirnya kelar juga."
-    elif 3 <= line_count < 8:
-        return "🪀 Percintaanmu jarang update, terakhir chat dari doi: 2 hari lalu.\n🚂 Alur hidupmu lurus kayak rel kereta... tapi kadang disabotase sinyal."
-    else:
-        return "🔕 Cinta? Apa itu? Kayaknya kamu udah LDR sama jodoh sejak lahir.\n💤 Hidupmu tenang... terlalu tenang, kayak WiFi tetangga yang dikunci."
+def interpret_lines(label, x, y, w, h, confidence):
+    if label == "brain":
+        if w > 0.4:
+            return "🚂 Alur hidupmu lurus kayak rel kereta... tapi kadang disabotase sinyal"
+        else:
+            return "📚 Hidupmu seperti skripsi: ditunda-tunda tapi akhirnya kelar juga."
+
+    elif label == "feel":
+        if h > 0.3:
+            return "💘 Kamu tipe bucin yang suka bilang 'terserah' tapi ngambek diam-diam"
+        else:
+            return "🔕 Cinta? Apa itu? Kayaknya kamu udah LDR sama jodoh sejak lahir."
+    elif label == "feel" and w > 0.6:
+        return "Waduh... bisa jatuh cinta sama AI ini mah."
+
+    elif label == "life":
+        if w > 0.5:
+            return "🌀 Alur hidupmu penuh plot twist, cocok jadi drama Netflix"
+        elif confidence < 0.5:
+            return "📈 Hidupmu naik turun, tapi kamu tetap senyum kayak nggak ada apa-apa"
+        else:
+            return "Kehidupanmu akan penuh perubahan yang menarik."
+
+    return "Belum bisa membaca garis tersebut."
 
 def generate_frames():
     global last_frame
@@ -78,22 +91,25 @@ def capture():
 
     try:
         results = model(frame)[0]
-        line_count = 0
-        for box in results.boxes:
-            cls_id = int(box.cls)
-            name = results.names[cls_id]
-            if name.lower() == "line":
-                line_count += 1
-
         annotated = results.plot()
-        ramalan = interpret_lines(line_count)
+
+        ramalan_semua = []
+        for box in results.boxes:
+            cls_id = int(box.cls[0])
+            name = results.names[cls_id]
+
+            x, y, w, h = box.xywh[0].tolist()
+            conf = box.conf[0].item()
+
+            ramalan = interpret_lines(name, x, y, w, h, conf)
+            ramalan_semua.append(f"[{name}] {ramalan}")
 
         _, buffer = cv2.imencode('.jpg', annotated)
         encoded_img = base64.b64encode(buffer).decode('utf-8')
 
         return jsonify({
             "image": encoded_img,
-            "ramalan": ramalan
+            "ramalan": ramalan_semua
         })
     except Exception as e:
         return jsonify({"error": f"Processing failed: {e}"}), 500
