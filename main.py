@@ -4,23 +4,22 @@ import base64
 import numpy as np
 from ultralytics import YOLO
 import threading
-import time
+import atexit
 
 app = Flask(__name__)
 model = YOLO("palm.pt")
 
-# Safe camera initialization
+# Kamera setup
 cap = cv2.VideoCapture(0)
-# cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 if not cap.isOpened():
     raise RuntimeError("❌ Kamera tidak dapat dibuka. Pastikan tidak digunakan oleh aplikasi lain.")
 
-# Biarkan kamera warm-up dulu (opsional tapi direkomendasikan)
-# time.sleep(2)
-
+# Global variables
 last_frame = None
 frame_lock = threading.Lock()
+streaming = False
 
+# Interpretasi garis tangan
 def interpret_lines(line_count):
     if line_count >= 25:
         return "❤ Percintaanmu rumit seperti sinetron 300 episode.\n🌀 Alur hidupmu penuh plot twist, cocok jadi drama Netflix."
@@ -33,40 +32,55 @@ def interpret_lines(line_count):
     else:
         return "🔕 Cinta? Apa itu? Kayaknya kamu udah LDR sama jodoh sejak lahir.\n💤 Hidupmu tenang... terlalu tenang, kayak WiFi tetangga yang dikunci."
 
+# Generator stream
 def generate_frames():
-    global last_frame
+    global last_frame, streaming
     while True:
+        if not streaming:
+            # Pause: return a black frame or skip sending
+            black = np.zeros((480, 640, 3), dtype=np.uint8)
+            ret, buffer = cv2.imencode('.jpg', black)
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+            continue
+
         success, frame = cap.read()
-        if not success or frame is None:
-            print("⚠️ Frame tidak berhasil dibaca.")
+        if not success:
             continue
 
         with frame_lock:
             last_frame = frame.copy()
 
-        try:
-            results = model(frame)[0]
-            annotated = results.plot()
-            ret, buffer = cv2.imencode('.jpg', annotated)
-            if not ret:
-                print("⚠️ Gagal meng-encode frame.")
-                continue
-            frame_bytes = buffer.tobytes()
-        except Exception as e:
-            print(f"❌ Error saat proses YOLO: {e}")
+        results = model(frame)[0]
+        annotated = results.plot()
+        ret, buffer = cv2.imencode('.jpg', annotated)
+        if not ret:
             continue
+        frame_bytes = buffer.tobytes()
 
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
+# Routes
 @app.route('/')
 def index():
     return render_template('index.html')
 
 @app.route('/video_feed')
 def video_feed():
-    return Response(generate_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/start', methods=['POST'])
+def start_stream():
+    global streaming
+    streaming = True
+    return jsonify({"status": "stream started"})
+
+@app.route('/stop', methods=['POST'])
+def stop_stream():
+    global streaming
+    streaming = False
+    return jsonify({"status": "stream stopped"})
 
 @app.route('/capture', methods=['POST'])
 def capture():
@@ -98,8 +112,7 @@ def capture():
     except Exception as e:
         return jsonify({"error": f"Processing failed: {e}"}), 500
 
-# Cleanup saat aplikasi berhenti
-import atexit
+# Cleanup
 @atexit.register
 def cleanup():
     if cap.isOpened():

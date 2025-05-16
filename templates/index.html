@@ -11,11 +11,14 @@
   <h1 class="text-3xl font-bold mb-6 text-center">🔮 Palmistry Live Detection</h1>
 
   <div class="border-4 border-indigo-500 rounded-xl overflow-hidden shadow-lg">
-    <img id="video-stream" src="{{ url_for('video_feed') }}" alt="Live Video Stream" class="w-full max-w-lg rounded"/>
+    <img id="video-stream" src="" alt="Live Video Stream" class="w-full max-w-lg rounded"/>
   </div>
 
-  <!-- Optional Jepret Button: Hidden for now -->
-  
+  <div class="flex gap-4 mt-4">
+    <button onclick="startStream()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Start</button>
+    <button onclick="stopStream()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Stop</button>
+  </div>
+
   <button id="capture-btn" class="mt-6 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded shadow">
     📸 Jepret & Ramalan
   </button>
@@ -28,12 +31,29 @@
   </div>
 
   <script>
-    // This section is disabled unless you want to re-enable jepret
-    
+    const videoStream = document.getElementById('video-stream');
     const captureBtn = document.getElementById('capture-btn');
     const resultArea = document.getElementById('result-area');
     const resultText = document.getElementById('ramalan-text');
     const resultImg = document.getElementById('result-img');
+
+    function startStream() {
+      fetch('/start', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+          console.log(data);
+          videoStream.src = '/video_feed?' + new Date().getTime(); // force refresh
+        });
+    }
+
+    function stopStream() {
+      fetch('/stop', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+          console.log(data);
+          videoStream.src = ''; // Stop loading frames
+        });
+    }
 
     captureBtn.addEventListener('click', async () => {
       const res = await fetch('/capture', { method: 'POST' });
@@ -43,7 +63,6 @@
       resultImg.src = 'data:image/jpeg;base64,' + data.image;
       resultArea.classList.remove('hidden');
     });
-    
   </script>
 </body>
 </html>
