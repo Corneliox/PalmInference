@@ -82,8 +82,8 @@ def stop_stream():
     streaming = False
     return jsonify({"status": "stream stopped"})
 
-@app.route('/capture', methods=['POST'])
-def capture():
+# @app.route('/capture', methods=['POST'])
+# def capture():
     global last_frame
     with frame_lock:
         if last_frame is None:
@@ -109,6 +109,50 @@ def capture():
             "image": encoded_img,
             "ramalan": ramalan
         })
+    except Exception as e:
+        return jsonify({"error": f"Processing failed: {e}"}), 500
+@app.route('/capture', methods=['POST'])
+def capture():
+    global last_frame
+    with frame_lock:
+        if last_frame is None:
+            return jsonify({"error": "No frame available"}), 500
+        frame = last_frame.copy()
+
+    try:
+        results = model(frame)[0]
+        line_count = 0
+        lines_info = []  # To store line details: name and position
+
+        for box, cls_id in zip(results.boxes.xyxy, results.boxes.cls):
+            name = results.names[int(cls_id)]
+            if name.lower() in ["feel", "brain", "life"]:  # Or just check == "line" if that's your class
+                line_count += 1
+                x1, y1, x2, y2 = box.tolist()
+                lines_info.append({
+                    "name": name,
+                    "x1": int(x1),
+                    "y1": int(y1),
+                    "x2": int(x2),
+                    "y2": int(y2),
+                    "center": {
+                        "x": int((x1 + x2) / 2),
+                        "y": int((y1 + y2) / 2)
+                    }
+                })
+
+        annotated = results.plot()
+        ramalan = interpret_lines(line_count)
+
+        _, buffer = cv2.imencode('.jpg', annotated)
+        encoded_img = base64.b64encode(buffer).decode('utf-8')
+
+        return jsonify({
+            "image": encoded_img,
+            "ramalan": ramalan,
+            "line_data": lines_info
+        })
+
     except Exception as e:
         return jsonify({"error": f"Processing failed: {e}"}), 500
 
