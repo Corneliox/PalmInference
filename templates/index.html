@@ -26,7 +26,7 @@
 
   <div id="result-area" class="mt-6 w-full max-w-lg bg-gray-800 p-4 rounded-lg shadow text-sm whitespace-pre-wrap hidden">
     <h2 class="text-lg font-semibold mb-2">🔍 Hasil Ramalan:</h2>
-    <div id="ramalan-text">[Hasil akan muncul di sini]</div>
+    <div id="ramalan-text" class="text-base leading-relaxed space-y-2 mb-4"></div>
     <img id="result-img" class="mt-4 w-full rounded-lg" />
   </div>
 
@@ -59,8 +59,28 @@
       const res = await fetch('/capture', { method: 'POST' });
       const data = await res.json();
 
-      resultText.textContent = data.ramalan;
-      resultImg.src = 'data:image/jpeg;base64,' + data.image;
+      if (data.error) {
+        resultText.innerHTML = `<span class="text-red-400">❌ Error: ${data.error}</span>`;
+        resultImg.src = '';
+        resultArea.classList.remove('hidden');
+        return;
+      }
+
+      const { personality, image } = data;
+
+      let html = '';
+      if (personality.life) {
+        html += `<p><strong>🧬 Life Line:</strong> ${personality.life}</p>`;
+      }
+      if (personality.heart) {
+        html += `<p><strong>💖 Heart Line:</strong> ${personality.heart}</p>`;
+      }
+      if (personality.head) {
+        html += `<p><strong>🧠 Head Line:</strong> ${personality.head}</p>`;
+      }
+
+      resultText.innerHTML = html;
+      resultImg.src = 'data:image/jpeg;base64,' + image;
       resultArea.classList.remove('hidden');
     });
   </script>
