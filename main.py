@@ -19,18 +19,84 @@ last_frame = None
 frame_lock = threading.Lock()
 streaming = False
 
+#Ver 1
 # Interpretasi garis tangan
-def interpret_lines(line_count):
-    if line_count >= 25:
-        return "❤ Percintaanmu rumit seperti sinetron 300 episode.\n🌀 Alur hidupmu penuh plot twist, cocok jadi drama Netflix."
-    elif 15 <= line_count < 25:
-        return "💘 Kamu tipe bucin yang suka bilang 'terserah' tapi ngambek diam-diam.\n📈 Hidupmu naik turun, tapi kamu tetap senyum kayak nggak ada apa-apa."
-    elif 8 <= line_count < 15:
-        return "💞 Kamu jago PDKT, tapi suka kejebak zona teman.\n📚 Hidupmu seperti skripsi: ditunda-tunda tapi akhirnya kelar juga."
-    elif 3 <= line_count < 8:
-        return "🪀 Percintaanmu jarang update, terakhir chat dari doi: 2 hari lalu.\n🚂 Alur hidupmu lurus kayak rel kereta... tapi kadang disabotase sinyal."
-    else:
-        return "🔕 Cinta? Apa itu? Kayaknya kamu udah LDR sama jodoh sejak lahir.\n💤 Hidupmu tenang... terlalu tenang, kayak WiFi tetangga yang dikunci."
+# def interpret_lines(line_count):
+    # if line_count >= 25:
+    #     return "❤ Percintaanmu rumit seperti sinetron 300 episode.\n🌀 Alur hidupmu penuh plot twist, cocok jadi drama Netflix."
+    # elif 15 <= line_count < 25:
+    #     return "💘 Kamu tipe bucin yang suka bilang 'terserah' tapi ngambek diam-diam.\n📈 Hidupmu naik turun, tapi kamu tetap senyum kayak nggak ada apa-apa."
+    # elif 8 <= line_count < 15:
+    #     return "💞 Kamu jago PDKT, tapi suka kejebak zona teman.\n📚 Hidupmu seperti skripsi: ditunda-tunda tapi akhirnya kelar juga."
+    # elif 3 <= line_count < 8:
+    #     return "🪀 Percintaanmu jarang update, terakhir chat dari doi: 2 hari lalu.\n🚂 Alur hidupmu lurus kayak rel kereta... tapi kadang disabotase sinyal."
+    # else:
+    #     return "🔕 Cinta? Apa itu? Kayaknya kamu udah LDR sama jodoh sejak lahir.\n💤 Hidupmu tenang... terlalu tenang, kayak WiFi tetangga yang dikunci."
+
+#Ver 2
+def interpret_traits(line_data):
+    def get_length(x1, y1, x2, y2):
+        return ((x2 - x1)**2 + (y2 - y1)**2) ** 0.5
+
+    interpretations = []
+
+    for line in line_data:
+        name = line["name"].lower()
+        x1, y1, x2, y2 = line["x1"], line["y1"], line["x2"], line["y2"]
+        length = get_length(x1, y1, x2, y2)
+        height = abs(y2 - y1)
+
+        if name == "life":
+            if length > 180:
+                interpretations.append({
+                    "title": "Life Line",
+                    "traits": [
+                        ("Energetic", "Bersemangat", "Anda adalah seorang yang penuh semangat, berenergi tinggi, dan selalu antusias dalam menjalani hidup.")
+                    ]
+                })
+            else:
+                interpretations.append({
+                    "title": "Life Line",
+                    "traits": [
+                        ("Conservative", "Konservatif", "Anda berhati-hati dalam mengambil keputusan dan cenderung menyukai stabilitas.")
+                    ]
+                })
+
+        elif name == "feel" or name == "heart":
+            traits = []
+            if length > 170:
+                traits.append(("Expressive", "Ekspresif", "Anda menunjukkan perasaan dengan terbuka dan mudah membentuk hubungan emosional."))
+            else:
+                traits.append(("Introvert", "Introvert", "Anda cenderung menyimpan perasaan dan lebih suka memprosesnya secara pribadi."))
+
+            if height > 60:
+                traits.append(("Emotional", "Emosional", "Anda merasakan emosi dengan mendalam dan mudah terhubung secara empatik."))
+            else:
+                traits.append(("Logical", "Logis", "Anda cenderung menggunakan logika dan berpikir rasional dalam hubungan."))
+            interpretations.append({ "title": "Heart Line", "traits": traits })
+
+        elif name == "brain" or name == "head":
+            traits = []
+            if length > 160:
+                traits.append(("Curious", "Penasaran", "Anda memiliki rasa ingin tahu yang besar dan suka mempelajari hal-hal baru."))
+            else:
+                traits.append(("Focused", "Fokus", "Anda cenderung praktis dan langsung pada tujuan."))
+
+            if height > 50:
+                traits.append(("Creative", "Kreatif", "Anda memiliki imajinasi yang kuat dan suka berpikir di luar kebiasaan."))
+            else:
+                traits.append(("Logical", "Logis", "Anda lebih mengandalkan akal dan berpikir dengan struktur yang rapi."))
+            interpretations.append({ "title": "Head Line", "traits": traits })
+
+    # Format output
+    output = ""
+    for item in interpretations:
+        output += f"{item['title']}\n"
+        for trait in item['traits']:
+            eng, indo, desc = trait
+            output += f"- {eng} ({indo})\n-- {desc}\n"
+        output += "\n"
+    return output.strip()
 
 # Generator stream
 def generate_frames():
@@ -160,8 +226,8 @@ def stop_stream():
     #     return jsonify({"error": f"Processing failed: {e}"}), 500
 
 #Ver 3
-@app.route('/capture', methods=['POST'])
-def capture():
+# @app.route('/capture', methods=['POST'])
+# def capture():
     global last_frame
     with frame_lock:
         if last_frame is None:
@@ -228,6 +294,66 @@ def capture():
 
     except Exception as e:
         return jsonify({"error": f"Processing failed: {e}"}), 500
+
+#Ver 4
+@app.route('/capture', methods=['POST'])
+def capture():
+    global last_frame
+    with frame_lock:
+        if last_frame is None:
+            return jsonify({"error": "No frame available"}), 500
+        frame = last_frame.copy()
+
+    try:
+        results = model(frame)[0]
+        lines_info = []
+
+        # Loop over detections
+        for box, cls_id in zip(results.boxes.xyxy, results.boxes.cls):
+            name = results.names[int(cls_id)]
+            if name.lower() in ["life", "heart", "feel", "brain", "head"]:
+                x1, y1, x2, y2 = map(int, box.tolist())
+                lines_info.append({
+                    "name": name,
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2
+                })
+
+        personality = interpret_traits(lines_info)
+
+        annotated = results.plot()
+        _, buffer = cv2.imencode('.jpg', annotated)
+        encoded_img = base64.b64encode(buffer).decode('utf-8')
+
+        return jsonify({
+            "image": encoded_img,
+            "personality": {
+                "life": extract_section(personality, "Life Line"),
+                "heart": extract_section(personality, "Heart Line"),
+                "head": extract_section(personality, "Head Line")
+            }
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"Processing failed: {e}"}), 500
+
+def extract_section(text, title):
+    """Helper to extract each section from interpreted string output."""
+    lines = text.splitlines()
+    collecting = False
+    section = []
+    for line in lines:
+        if line.strip() == title:
+            collecting = True
+            continue
+        elif collecting and line.strip() and not line.startswith("-"):
+            break
+        elif collecting:
+            section.append(line)
+    return "\n".join(section).strip() if section else None
+
 
 # Cleanup
 @atexit.register
