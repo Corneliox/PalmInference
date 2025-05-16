@@ -4,14 +4,22 @@ import base64
 import numpy as np
 from ultralytics import YOLO
 import threading
-
-last_frame = None
-frame_lock = threading.Lock()
+import time
 
 app = Flask(__name__)
 model = YOLO("palm.pt")
+
+# Safe camera initialization
 cap = cv2.VideoCapture(0)
-latest_frame = None
+# cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+if not cap.isOpened():
+    raise RuntimeError("❌ Kamera tidak dapat dibuka. Pastikan tidak digunakan oleh aplikasi lain.")
+
+# Biarkan kamera warm-up dulu (opsional tapi direkomendasikan)
+# time.sleep(2)
+
+last_frame = None
+frame_lock = threading.Lock()
 
 def interpret_lines(line_count):
     if line_count >= 25:
@@ -25,38 +33,31 @@ def interpret_lines(line_count):
     else:
         return "🔕 Cinta? Apa itu? Kayaknya kamu udah LDR sama jodoh sejak lahir.\n💤 Hidupmu tenang... terlalu tenang, kayak WiFi tetangga yang dikunci."
 
-# def generate_frames():
-#     global latest_frame
-#     while True:
-#         success, frame = cap.read()
-#         if not success:
-#             break
-#         results = model(frame)[0]
-#         annotated = results.plot()
-#         latest_frame = frame.copy()
-#         _, buffer = cv2.imencode('.jpg', annotated)
-#         frame = buffer.tobytes()
-
-#         yield (b'--frame\r\n'
-#                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 def generate_frames():
     global last_frame
     while True:
         success, frame = cap.read()
-        if not success:
-            break
+        if not success or frame is None:
+            print("⚠️ Frame tidak berhasil dibaca.")
+            continue
 
         with frame_lock:
             last_frame = frame.copy()
 
-        results = model(frame)[0]
-        annotated = results.plot()
-        ret, buffer = cv2.imencode('.jpg', annotated)
-        frame = buffer.tobytes()
+        try:
+            results = model(frame)[0]
+            annotated = results.plot()
+            ret, buffer = cv2.imencode('.jpg', annotated)
+            if not ret:
+                print("⚠️ Gagal meng-encode frame.")
+                continue
+            frame_bytes = buffer.tobytes()
+        except Exception as e:
+            print(f"❌ Error saat proses YOLO: {e}")
+            continue
 
         yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
 @app.route('/')
 def index():
@@ -67,31 +68,6 @@ def video_feed():
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
-# @app.route('/capture', methods=['POST'])
-# def capture():
-#     global latest_frame
-#     if latest_frame is None:
-#         return jsonify({"error": "No frame available yet"}), 500
-
-#     results = model(latest_frame)[0]
-#     line_count = 0
-#     for box in results.boxes:
-#         cls_id = int(box.cls)
-#         name = results.names[cls_id]
-#         if name.lower() == "line":
-#             line_count += 1
-
-#     annotated = results.plot()
-#     ramalan = interpret_lines(line_count)
-
-#     _, buffer = cv2.imencode('.jpg', annotated)
-#     encoded_img = base64.b64encode(buffer).decode('utf-8')
-
-#     return jsonify({
-#         "image": encoded_img,
-#         "ramalan": ramalan
-#     })
-
 @app.route('/capture', methods=['POST'])
 def capture():
     global last_frame
@@ -100,38 +76,35 @@ def capture():
             return jsonify({"error": "No frame available"}), 500
         frame = last_frame.copy()
 
-    results = model(frame)[0]
-    line_count = 0
-    for box in results.boxes:
-        cls_id = int(box.cls)
-        name = results.names[cls_id]
-        if name.lower() == "line":
-            line_count += 1
+    try:
+        results = model(frame)[0]
+        line_count = 0
+        for box in results.boxes:
+            cls_id = int(box.cls)
+            name = results.names[cls_id]
+            if name.lower() == "line":
+                line_count += 1
 
-    annotated = results.plot()
-    ramalan = interpret_lines(line_count)
+        annotated = results.plot()
+        ramalan = interpret_lines(line_count)
 
-    _, buffer = cv2.imencode('.jpg', annotated)
-    encoded_img = base64.b64encode(buffer).decode('utf-8')
+        _, buffer = cv2.imencode('.jpg', annotated)
+        encoded_img = base64.b64encode(buffer).decode('utf-8')
 
-    return jsonify({
-        "image": encoded_img,
-        "ramalan": ramalan
-    })
+        return jsonify({
+            "image": encoded_img,
+            "ramalan": ramalan
+        })
+    except Exception as e:
+        return jsonify({"error": f"Processing failed: {e}"}), 500
 
-
-if __name__ == "__main__":
-    import atexit
-    @atexit.register
-    def cleanup():
-        cap.release()
-        cv2.destroyAllWindows()
-
-    app.run(debug=True)
-
+# Cleanup saat aplikasi berhenti
 import atexit
-
 @atexit.register
 def cleanup():
     if cap.isOpened():
         cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    app.run(debug=True)

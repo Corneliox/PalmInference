@@ -1,97 +1,49 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Ramalan Garis Tangan</title>
-  <style>
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background: linear-gradient(to right, #ffe9e9, #fef3e8);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin: 0;
-      padding: 2rem;
-    }
-
-    h1 {
-      color: #e53935;
-      margin-bottom: 1rem;
-    }
-
-    #video-container {
-      border: 4px solid #e57373;
-      border-radius: 16px;
-      overflow: hidden;
-      width: 640px;
-      height: 480px;
-      background: #000;
-      margin-bottom: 1rem;
-    }
-
-    #snapshot {
-      margin-top: 1rem;
-      max-width: 100%;
-      border: 3px solid #ffccbc;
-      border-radius: 12px;
-    }
-
-    button {
-      background-color: #ff7043;
-      color: white;
-      font-size: 18px;
-      border: none;
-      border-radius: 10px;
-      padding: 10px 20px;
-      cursor: pointer;
-      transition: background 0.3s ease;
-    }
-
-    button:hover {
-      background-color: #f4511e;
-    }
-
-    #ramalan {
-      margin-top: 1.5rem;
-      background-color: #fff3e0;
-      border-left: 6px solid #fb8c00;
-      padding: 1rem;
-      border-radius: 8px;
-      white-space: pre-line;
-      max-width: 640px;
-      font-size: 16px;
-    }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Palm Inference Cam</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
-<body>
-  <h1>🔮 Ramalan Garis Tangan</h1>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
 
-  <div id="video-container">
-    <img src="{{ url_for('video_feed') }}" width="640" height="480" id="live-feed" />
+  <h1 class="text-3xl font-bold mb-6 text-center">🔮 Palmistry Live Detection</h1>
+
+  <div class="border-4 border-indigo-500 rounded-xl overflow-hidden shadow-lg">
+    <img id="video-stream" src="{{ url_for('video_feed') }}" alt="Live Video Stream" class="w-full max-w-lg rounded"/>
   </div>
 
-  <button onclick="takeSnapshot()">📸 Jepret!</button>
+  <!-- Optional Jepret Button: Hidden for now -->
+  
+  <button id="capture-btn" class="mt-6 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded shadow">
+    📸 Jepret & Ramalan
+  </button>
+  <p class="mt-2 text-sm text-gray-400">Tekan tombol di atas untuk mengambil gambar dan mendapatkan ramalan.</p>
 
-  <img id="snapshot" style="display:none;" />
-  <div id="ramalan" style="display:none;"></div>
+  <div id="result-area" class="mt-6 w-full max-w-lg bg-gray-800 p-4 rounded-lg shadow text-sm whitespace-pre-wrap hidden">
+    <h2 class="text-lg font-semibold mb-2">🔍 Hasil Ramalan:</h2>
+    <div id="ramalan-text">[Hasil akan muncul di sini]</div>
+    <img id="result-img" class="mt-4 w-full rounded-lg" />
+  </div>
 
   <script>
-    function takeSnapshot() {
-      fetch("/capture", { method: "POST" })
-        .then(response => response.json())
-        .then(data => {
-          const snapshot = document.getElementById("snapshot");
-          const ramalan = document.getElementById("ramalan");
+    // This section is disabled unless you want to re-enable jepret
+    
+    const captureBtn = document.getElementById('capture-btn');
+    const resultArea = document.getElementById('result-area');
+    const resultText = document.getElementById('ramalan-text');
+    const resultImg = document.getElementById('result-img');
 
-          snapshot.src = "data:image/jpeg;base64," + data.image;
-          snapshot.style.display = "block";
-          ramalan.textContent = data.ramalan;
-          ramalan.style.display = "block";
-        })
-        .catch(err => {
-          alert("Gagal mengambil gambar: " + err);
-        });
-    }
+    captureBtn.addEventListener('click', async () => {
+      const res = await fetch('/capture', { method: 'POST' });
+      const data = await res.json();
+
+      resultText.textContent = data.ramalan;
+      resultImg.src = 'data:image/jpeg;base64,' + data.image;
+      resultArea.classList.remove('hidden');
+    });
+    
   </script>
 </body>
 </html>
