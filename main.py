@@ -45,114 +45,169 @@ def calculate_x_hand_ref(line_data):
     print("Warning: Essential lines for X_hand_ref missing. Using default.")
     return 200.0
 
-# Thresholds
-LIFE_LEN_ENTHUSIASTIC = 0.75
-LIFE_HGT_ENERGETIC = 0.45
+# Thresholds for normalized values (relative to hand width)
+THRESHOLDS = {
+    "life": {
+        "length": (0.33, 0.66),
+        "height": (0.33, 0.66)
+    },
+    "heart": {
+        "length": (0.33, 0.66),
+        "height": (0.33, 0.66)
+    },
+    "head": {
+        "length": (0.33, 0.66),
+        "height": (0.33, 0.66)
+    }
+}
 
-HEART_LEN_EXPRESSIVE = 0.7
-HEART_HGT_EMOTIONAL = 0.25
+# Trait definitions per line
+TRAITS = {
+    "life": {
+        "title": "🌱 Life Line",
+        "length": {
+            "high": {
+                "result": "🔥 Enthusiastic (Antusias)",
+                "explanation": "Anda menyambut hidup dengan semangat dan suka tantangan."
+            },
+            "mid": {
+                "result": "🧘 Balanced Outlook (Pandangan Seimbang)",
+                "explanation": "Anda menunjukkan antusiasme yang cukup namun tetap terkendali."
+            },
+            "low": {
+                "result": "🌿 Cautious (Berhati-hati)",
+                "explanation": "Anda cenderung mempertimbangkan semua langkah dengan teliti."
+            }
+        },
+        "height": {
+            "high": {
+                "result": "⚡ Energetic (Berenergi)",
+                "explanation": "Anda memiliki energi tinggi, aktif dan vital dalam kehidupan."
+            },
+            "mid": {
+                "result": "🌗 Balanced Energy (Energi Seimbang)",
+                "explanation": "Anda memiliki tingkat energi yang stabil antara aktif dan tenang."
+            },
+            "low": {
+                "result": "🛡️ Conservative (Konservatif)",
+                "explanation": "Anda lebih menyukai stabilitas dan cenderung berhati-hati."
+            }
+        }
+    },
+    "heart": {
+        "title": "💓 Heart Line",
+        "length": {
+            "high": {
+                "result": "💖 Expressive (Ekspresif)",
+                "explanation": "Anda mudah menunjukkan perasaan dan membentuk hubungan emosional."
+            },
+            "mid": {
+                "result": "💬 Emotionally Balanced (Seimbang secara Emosi)",
+                "explanation": "Anda mampu mengontrol ekspresi perasaan secara tepat."
+            },
+            "low": {
+                "result": "🨫 Introvert (Introvert)",
+                "explanation": "Anda cenderung memproses perasaan secara pribadi dan tertutup."
+            }
+        },
+        "height": {
+            "high": {
+                "result": "🌊 Emotional (Emosional)",
+                "explanation": "Anda merasakan emosi dengan mendalam dan mudah empati."
+            },
+            "mid": {
+                "result": "🌤️ Emotionally Balanced (Emosi Seimbang)",
+                "explanation": "Anda tahu kapan harus merasa dan kapan harus berpikir logis."
+            },
+            "low": {
+                "result": "🧠 Logical (Logis)",
+                "explanation": "Anda lebih memilih berpikir rasional dibandingkan mengutamakan perasaan."
+            }
+        }
+    },
+    "head": {
+        "title": "🧠 Head Line",
+        "length": {
+            "high": {
+                "result": "🔍 Curious (Penasaran)",
+                "explanation": "Anda suka mengeksplorasi ide baru dan memiliki rasa ingin tahu tinggi."
+            },
+            "mid": {
+                "result": "📚 Balanced Thinking (Pikiran Seimbang)",
+                "explanation": "Anda mampu menjaga keseimbangan antara keingintahuan dan fokus."
+            },
+            "low": {
+                "result": "🎯 Focused (Fokus)",
+                "explanation": "Anda langsung pada tujuan, praktis, dan tidak mudah terdistraksi."
+            }
+        },
+        "height": {
+            "high": {
+                "result": "🎨 Creative (Kreatif)",
+                "explanation": "Anda suka berpikir out-of-the-box dan penuh imajinasi."
+            },
+            "mid": {
+                "result": "⚖️ Balanced Mindset (Pola Pikir Seimbang)",
+                "explanation": "Anda bisa berpikir logis maupun kreatif tergantung situasi."
+            },
+            "low": {
+                "result": "🧠 Logical (Logis)",
+                "explanation": "Anda suka berpikir sistematis dan analitis dalam menyelesaikan masalah."
+            }
+        }
+    }
+}
 
-HEAD_LEN_CURIOUS = 0.65
-HEAD_HGT_CREATIVE = 0.2
+
+def get_trait_by_value(value, low, high, trait_dict):
+    if value > high:
+        return trait_dict["high"]
+    elif value > low:
+        return trait_dict["mid"]
+    else:
+        return trait_dict["low"]
+
 
 def interpret_traits(line_data):
     interpretations = []
-    X_hand_ref = calculate_x_hand_ref(line_data)
+    hand_width = calculate_x_hand_ref(line_data)
 
     for line in line_data:
         name = line["name"].lower()
-        x1, y1, x2, y2 = line["x1"], line["y1"], line["x2"], line["y2"]
-
-        actual_length = get_euclidean_length(x1, y1, x2, y2)
-        actual_height = abs(y2 - y1)
-
-        normalized_length = actual_length / X_hand_ref
-        normalized_height = actual_height / X_hand_ref
-
-        traits = []
-        title = ""
-
-        if name == "life":
-            title = "🌱 Life Line"
-            if normalized_height > LIFE_HGT_ENERGETIC:
-                traits.append({
-                    "result": "⚡ Energetic (Berenergi)",
-                    "explanation": "Anda memiliki energi fisik dan mental yang tinggi, cenderung aktif dan vital dalam kehidupan sehari-hari."
-                })
-            else:
-                traits.append({
-                    "result": "🛡️ Conservative (Konservatif)",
-                    "explanation": "Anda lebih menyukai kestabilan, cenderung tidak impulsif, dan memilih pendekatan hati-hati."
-                })
-
-            if normalized_length > LIFE_LEN_ENTHUSIASTIC:
-                traits.append({
-                    "result": "🔥 Enthusiastic (Antusias)",
-                    "explanation": "Anda memiliki antusiasme tinggi terhadap kehidupan dan menyambut tantangan dengan semangat."
-                })
-            else:
-                traits.append({
-                    "result": "🌿 Cautious (Berhati-hati)",
-                    "explanation": "Anda cenderung menjaga diri dan mempertimbangkan langkah dengan teliti sebelum bertindak."
-                })
-
-        elif name in ["feel", "heart"]:
-            title = "💓 Heart Line"
-            if normalized_length > HEART_LEN_EXPRESSIVE:
-                traits.append({
-                    "result": "💖 Expressive (Ekspresif)",
-                    "explanation": "Anda menunjukkan perasaan dengan terbuka dan mudah membentuk hubungan emosional."
-                })
-            else:
-                traits.append({
-                    "result": "🨫 Introvert (Introvert)",
-                    "explanation": "Anda cenderung menyimpan perasaan dan lebih suka memprosesnya secara pribadi."
-                })
-
-            if normalized_height > HEART_HGT_EMOTIONAL:
-                traits.append({
-                    "result": "🌊 Emotional (Emosional)",
-                    "explanation": "Anda merasakan emosi dengan mendalam dan mudah terhubung secara empatik."
-                })
-            else:
-                traits.append({
-                    "result": "🧠 Logical (Logis)",
-                    "explanation": "Anda cenderung menggunakan logika dan berpikir rasional dalam hubungan."
-                })
-
+        if name in ["feel", "heart"]:
+            name = "heart"
         elif name in ["brain", "head"]:
-            title = "🧠 Head Line"
-            if normalized_length > HEAD_LEN_CURIOUS:
-                traits.append({
-                    "result": "🔍 Curious (Penasaran)",
-                    "explanation": "Anda memiliki rasa ingin tahu yang besar dan suka mempelajari hal-hal baru."
-                })
-            else:
-                traits.append({
-                    "result": "🎯 Focused (Fokus)",
-                    "explanation": "Anda cenderung praktis dan langsung pada tujuan."
-                })
+            name = "head"
+        elif name == "life":
+            name = "life"
+        else:
+            continue  # skip unknown lines
 
-            if normalized_height > HEAD_HGT_CREATIVE:
-                traits.append({
-                    "result": "🎨 Creative (Kreatif)",
-                    "explanation": "Anda memiliki imajinasi yang kuat dan suka berpikir di luar kebiasaan."
-                })
-            else:
-                traits.append({
-                    "result": "🧠 Logical (Logis)",
-                    "explanation": "Anda lebih mengandalkan akal dan berpikir dengan struktur yang rapi."
-                })
+        x1, y1, x2, y2 = line["x1"], line["y1"], line["x2"], line["y2"]
+        length = get_euclidean_length(x1, y1, x2, y2)
+        height = abs(y2 - y1)
 
-        if title and traits:
-            interpretations.append({
-                "title": title,
-                "traits": traits
-            })
+        normalized_length = length / hand_width
+        normalized_height = height / hand_width
+
+        low_len, high_len = THRESHOLDS[name]["length"]
+        low_hgt, high_hgt = THRESHOLDS[name]["height"]
+
+        traits = [
+            get_trait_by_value(normalized_length, low_len, high_len, TRAITS[name]["length"]),
+            get_trait_by_value(normalized_height, low_hgt, high_hgt, TRAITS[name]["height"])
+        ]
+
+        interpretations.append({
+            "title": TRAITS[name]["title"],
+            "traits": traits
+        })
 
     return interpretations
 
-def generate_frames():
+
+
+# def generate_frames():
     # global last_frame, streaming
     # while True:
     #     if not streaming:
@@ -176,14 +231,15 @@ def generate_frames():
     #         continue
     #     yield (b'--frame\r\n'
     #            b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-    def generate_frames():
+
+def generate_frames():
     global last_frame, streaming
     last_detection_time = 0  
-    detection_interval = 1.0  
+    detection_interval = 0  
 
     while True:
         if not streaming:
-            black = np.zeros((480, 640, 3), dtype=np.uint8)
+            black = np.zeros((720, 1280, 3), dtype=np.uint8)
             ret, buffer = cv2.imencode('.jpg', black)
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')

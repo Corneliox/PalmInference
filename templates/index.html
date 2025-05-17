@@ -93,7 +93,48 @@
         return block;
       }
 
+      // Evet Listener for Enter and Space key
 
+      // document.addEventListener("keydown", function (event) {
+      //   const btn = document.getElementById("capture-btn");
+
+      //   // Check if the user pressed Space or Enter
+      //   if (event.code === "Space" || event.code === "Enter") {
+      //     event.preventDefault(); // prevent default scroll or form submission
+      //     btn.click(); // simulate a click on the button
+      //   }
+      // });
+      const captureBtn = document.getElementById("capture-btn");
+      let isCooldown = false; // to prevent multiple triggers
+
+      function triggerCapture() {
+        if (isCooldown) return; // skip if still in cooldown
+
+        isCooldown = true;
+        captureBtn.click(); // trigger the button's click event
+
+        // Set a cooldown duration (e.g., 3000 ms = 3 seconds)
+        setTimeout(() => {
+          isCooldown = false;
+        }, 3000);
+      }
+
+      // Allow keypress (Space or Enter)
+      document.addEventListener("keydown", function (event) {
+        if (event.code === "Space" || event.code === "Enter") {
+          event.preventDefault(); // prevent default behavior
+          triggerCapture();
+        }
+      });
+
+      // Also wrap the button's actual click
+      captureBtn.addEventListener("click", function (event) {
+        if (isCooldown) {
+          event.preventDefault(); // prevent execution
+          return;
+        }
+        triggerCapture();
+      });
 
       if (personality.life && Array.isArray(personality.life)) {
         html += formatLine("🌱", "Life Line", personality.life);
