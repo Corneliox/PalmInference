@@ -5,6 +5,7 @@ import numpy as np
 from ultralytics import YOLO
 import threading
 import atexit
+import time
 
 app = Flask(__name__)
 model = YOLO("palm.pt")
@@ -152,7 +153,34 @@ def interpret_traits(line_data):
     return interpretations
 
 def generate_frames():
+    # global last_frame, streaming
+    # while True:
+    #     if not streaming:
+    #         black = np.zeros((480, 640, 3), dtype=np.uint8)
+    #         ret, buffer = cv2.imencode('.jpg', black)
+    #         yield (b'--frame\r\n'
+    #                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+    #         continue
+
+    #     success, frame = cap.read()
+    #     if not success:
+    #         continue
+
+    #     with frame_lock:
+    #         last_frame = frame.copy()
+
+    #     results = model(frame)[0]
+    #     annotated = results.plot()
+    #     ret, buffer = cv2.imencode('.jpg', annotated)
+    #     if not ret:
+    #         continue
+    #     yield (b'--frame\r\n'
+    #            b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+    def generate_frames():
     global last_frame, streaming
+    last_detection_time = 0  
+    detection_interval = 1.0  
+
     while True:
         if not streaming:
             black = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -165,14 +193,23 @@ def generate_frames():
         if not success:
             continue
 
+        current_time = time.time()
+
         with frame_lock:
             last_frame = frame.copy()
 
-        results = model(frame)[0]
-        annotated = results.plot()
+        
+        if current_time - last_detection_time >= detection_interval:
+            results = model(frame)[0]
+            annotated = results.plot()
+            last_detection_time = current_time
+        else:
+            annotated = frame 
+
         ret, buffer = cv2.imencode('.jpg', annotated)
         if not ret:
             continue
+
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
