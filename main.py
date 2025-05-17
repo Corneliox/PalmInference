@@ -19,117 +19,61 @@ last_frame = None
 frame_lock = threading.Lock()
 streaming = False
 
-# # def interpret_traits(line_data):
-#     def get_length(x1, y1, x2, y2):
-#         return ((x2 - x1)**2 + (y2 - y1)**2) ** 0.5
+def get_euclidean_length(x1, y1, x2, y2):
+    return ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
 
-#     interpretations = []
+def calculate_x_hand_ref(line_data):
+    brain_line_coords = None
+    feel_line_coords = None
+    for line in line_data:
+        name = line["name"].lower()
+        if name in ["brain", "head"]:
+            brain_line_coords = (line["x1"], line["x2"])
+        elif name in ["feel", "heart"]:
+            feel_line_coords = (line["x1"], line["x2"])
 
-#     for line in line_data:
-#         name = line["name"].lower()
-#         x1, y1, x2, y2 = line["x1"], line["y1"], line["x2"], line["y2"]
-#         length = get_length(x1, y1, x2, y2)
-#         height = abs(y2 - y1)
+    if brain_line_coords and feel_line_coords:
+        b_x1, b_x2 = brain_line_coords
+        f_x1, f_x2 = feel_line_coords
+        candidates = [
+            abs(b_x1 - f_x1), abs(b_x1 - f_x2),
+            abs(b_x2 - f_x1), abs(b_x2 - f_x2)
+        ]
+        x_ref = max(candidates) if candidates else 1.0
+        return x_ref if x_ref > 0 else 1.0
+    print("Warning: Essential lines for X_hand_ref missing. Using default.")
+    return 200.0
 
-#         if name == "life":
-#             if length > 180:
-#                 interpretations.append({
-#                     "title": "🌱 Life Line",
-#                     "traits": [
-#                         {
-#                             "result": "✨ Energetic (Bersemangat)",
-#                             "explanation": "Anda adalah seorang yang penuh semangat, berenergi tinggi, dan selalu antusias dalam menjalani hidup."
-#                         }
-#                     ]
-#                 })
-#             else:
-#                 interpretations.append({
-#                     "title": "🌱 Life Line",
-#                     "traits": [
-#                         {
-#                             "result": "🛡️ Conservative (Konservatif)",
-#                             "explanation": "Anda berhati-hati dalam mengambil keputusan dan cenderung menyukai stabilitas."
-#                         }
-#                     ]
-#                 })
+# Thresholds
+LIFE_LEN_ENTHUSIASTIC = 0.75
+LIFE_HGT_ENERGETIC = 0.45
 
-#         elif name in ["feel", "heart"]:
-#             traits = []
-#             if length > 170:
-#                 traits.append({
-#                     "result": "💖 Expressive (Ekspresif)",
-#                     "explanation": "Anda menunjukkan perasaan dengan terbuka dan mudah membentuk hubungan emosional."
-#                 })
-#             else:
-#                 traits.append({
-#                     "result": "🨫 Introvert (Introvert)",
-#                     "explanation": "Anda cenderung menyimpan perasaan dan lebih suka memprosesnya secara pribadi."
-#                 })
+HEART_LEN_EXPRESSIVE = 0.7
+HEART_HGT_EMOTIONAL = 0.25
 
-#             if height > 60:
-#                 traits.append({
-#                     "result": "🌊 Emotional (Emosional)",
-#                     "explanation": "Anda merasakan emosi dengan mendalam dan mudah terhubung secara empatik."
-#                 })
-#             else:
-#                 traits.append({
-#                     "result": "🧠 Logical (Logis)",
-#                     "explanation": "Anda cenderung menggunakan logika dan berpikir rasional dalam hubungan."
-#                 })
-
-#             interpretations.append({
-#                 "title": "💓 Heart Line",
-#                 "traits": traits
-#             })
-
-#         elif name in ["brain", "head"]:
-#             traits = []
-#             if length > 160:
-#                 traits.append({
-#                     "result": "🔍 Curious (Penasaran)",
-#                     "explanation": "Anda memiliki rasa ingin tahu yang besar dan suka mempelajari hal-hal baru."
-#                 })
-#             else:
-#                 traits.append({
-#                     "result": "🎯 Focused (Fokus)",
-#                     "explanation": "Anda cenderung praktis dan langsung pada tujuan."
-#                 })
-
-#             if height > 50:
-#                 traits.append({
-#                     "result": "🎨 Creative (Kreatif)",
-#                     "explanation": "Anda memiliki imajinasi yang kuat dan suka berpikir di luar kebiasaan."
-#                 })
-#             else:
-#                 traits.append({
-#                     "result": "🧠 Logical (Logis)",
-#                     "explanation": "Anda lebih mengandalkan akal dan berpikir dengan struktur yang rapi."
-#                 })
-
-#             interpretations.append({
-#                 "title": "🧠 Head Line",
-#                 "traits": traits
-#             })
-
-#     return interpretations
+HEAD_LEN_CURIOUS = 0.65
+HEAD_HGT_CREATIVE = 0.2
 
 def interpret_traits(line_data):
-    def get_length(x1, y1, x2, y2):
-        return ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-
     interpretations = []
+    X_hand_ref = calculate_x_hand_ref(line_data)
 
     for line in line_data:
         name = line["name"].lower()
         x1, y1, x2, y2 = line["x1"], line["y1"], line["x2"], line["y2"]
-        length = get_length(x1, y1, x2, y2)
-        height = abs(y2 - y1)
+
+        actual_length = get_euclidean_length(x1, y1, x2, y2)
+        actual_height = abs(y2 - y1)
+
+        normalized_length = actual_length / X_hand_ref
+        normalized_height = actual_height / X_hand_ref
+
+        traits = []
+        title = ""
 
         if name == "life":
-            traits = []
-
-            # Height-based trait (Energetic vs Conservative)
-            if height > 100:
+            title = "🌱 Life Line"
+            if normalized_height > LIFE_HGT_ENERGETIC:
                 traits.append({
                     "result": "⚡ Energetic (Berenergi)",
                     "explanation": "Anda memiliki energi fisik dan mental yang tinggi, cenderung aktif dan vital dalam kehidupan sehari-hari."
@@ -140,8 +84,7 @@ def interpret_traits(line_data):
                     "explanation": "Anda lebih menyukai kestabilan, cenderung tidak impulsif, dan memilih pendekatan hati-hati."
                 })
 
-            # Length-based trait (Enthusiastic vs Cautious)
-            if length > 180:
+            if normalized_length > LIFE_LEN_ENTHUSIASTIC:
                 traits.append({
                     "result": "🔥 Enthusiastic (Antusias)",
                     "explanation": "Anda memiliki antusiasme tinggi terhadap kehidupan dan menyambut tantangan dengan semangat."
@@ -152,15 +95,9 @@ def interpret_traits(line_data):
                     "explanation": "Anda cenderung menjaga diri dan mempertimbangkan langkah dengan teliti sebelum bertindak."
                 })
 
-            interpretations.append({
-                "title": "🌱 Life Line",
-                "traits": traits
-            })
-
         elif name in ["feel", "heart"]:
-            traits = []
-
-            if length > 170:
+            title = "💓 Heart Line"
+            if normalized_length > HEART_LEN_EXPRESSIVE:
                 traits.append({
                     "result": "💖 Expressive (Ekspresif)",
                     "explanation": "Anda menunjukkan perasaan dengan terbuka dan mudah membentuk hubungan emosional."
@@ -171,7 +108,7 @@ def interpret_traits(line_data):
                     "explanation": "Anda cenderung menyimpan perasaan dan lebih suka memprosesnya secara pribadi."
                 })
 
-            if height > 60:
+            if normalized_height > HEART_HGT_EMOTIONAL:
                 traits.append({
                     "result": "🌊 Emotional (Emosional)",
                     "explanation": "Anda merasakan emosi dengan mendalam dan mudah terhubung secara empatik."
@@ -182,15 +119,9 @@ def interpret_traits(line_data):
                     "explanation": "Anda cenderung menggunakan logika dan berpikir rasional dalam hubungan."
                 })
 
-            interpretations.append({
-                "title": "💓 Heart Line",
-                "traits": traits
-            })
-
         elif name in ["brain", "head"]:
-            traits = []
-
-            if length > 160:
+            title = "🧠 Head Line"
+            if normalized_length > HEAD_LEN_CURIOUS:
                 traits.append({
                     "result": "🔍 Curious (Penasaran)",
                     "explanation": "Anda memiliki rasa ingin tahu yang besar dan suka mempelajari hal-hal baru."
@@ -201,7 +132,7 @@ def interpret_traits(line_data):
                     "explanation": "Anda cenderung praktis dan langsung pada tujuan."
                 })
 
-            if height > 50:
+            if normalized_height > HEAD_HGT_CREATIVE:
                 traits.append({
                     "result": "🎨 Creative (Kreatif)",
                     "explanation": "Anda memiliki imajinasi yang kuat dan suka berpikir di luar kebiasaan."
@@ -212,8 +143,9 @@ def interpret_traits(line_data):
                     "explanation": "Anda lebih mengandalkan akal dan berpikir dengan struktur yang rapi."
                 })
 
+        if title and traits:
             interpretations.append({
-                "title": "🧠 Head Line",
+                "title": title,
                 "traits": traits
             })
 
