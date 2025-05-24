@@ -53,7 +53,7 @@ THRESHOLDS = {
         "height": (0.33, 0.66)
     },
     "heart": {
-        "length": (0.33, 0.66),
+        "length": (0.25, 0.45, 0.7),  # short < 0.25, mid 0.25-0.45, long 0.45-0.7, extra-long > 0.7
         "height": (0.33, 0.66)
     },
     "head": {
@@ -98,17 +98,21 @@ TRAITS = {
     "heart": {
         "title": "💓 Heart Line",
         "length": {
-            "high": {
-                "result": "💖 Expressive (Ekspresif)",
-                "explanation": "Anda mudah menunjukkan perasaan dan membentuk hubungan emosional."
+            "extra_long": {
+                "result": "💞 Unwavering Devotion (Pengabdian Tak Tergoyahkan)",
+                "explanation": "Individuals with an exceptionally long heart line often display an unwavering devotion and loyalty in their relationships. They may be prone to investing heavily in their loved ones, sometimes at the expense of their own needs."
+            },
+            "long": {
+                "result": "💖 Deeply Expressive (Sangat Ekspresif)",
+                "explanation": "People with an extended heart line typically have a deep capacity for emotional expression and a strong desire for intimacy. They may be drawn to intense, all-encompassing relationships and have a heightened sensitivity to the emotional needs of others."
             },
             "mid": {
-                "result": "💬 Emotionally Balanced (Seimbang secara Emosi)",
-                "explanation": "Anda mampu mengontrol ekspresi perasaan secara tepat."
+                "result": "🤝 Balanced & Empathetic (Seimbang & Empati)",
+                "explanation": "Those with a heart line of moderate length often exhibit a balanced and empathetic approach to their emotional life. They are able to strike a harmonious equilibrium between attending to their own needs and being considerate of their partner's or loved one's feelings."
             },
-            "low": {
-                "result": "🨫 Introvert (Introvert)",
-                "explanation": "Anda cenderung memproses perasaan secara pribadi dan tertutup."
+            "short": {
+                "result": "🧍 Self-Focused (Fokus pada Diri Sendiri)",
+                "explanation": "Individuals with a short heart line tend to be more self-focused and prioritize their own needs and desires in relationships. They may have a more pragmatic approach to love, valuing their independence and personal boundaries."
             }
         },
         "height": {
@@ -160,13 +164,26 @@ TRAITS = {
 }
 
 
-def get_trait_by_value(value, low, high, trait_dict):
-    if value > high:
-        return trait_dict["high"]
-    elif value > low:
-        return trait_dict["mid"]
+def get_trait_by_value(value, *thresholds, trait_dict):
+    # For Heart line length, support extra-long
+    if "extra_long" in trait_dict:
+        low, mid, high = thresholds
+        if value > high:
+            return trait_dict["extra_long"]
+        elif value > mid:
+            return trait_dict["long"]
+        elif value > low:
+            return trait_dict["mid"]
+        else:
+            return trait_dict["short"]
     else:
-        return trait_dict["low"]
+        low, high = thresholds
+        if value > high:
+            return trait_dict["high"]
+        elif value > low:
+            return trait_dict["mid"]
+        else:
+            return trait_dict["low"]
 
 
 def interpret_traits(line_data):
@@ -191,13 +208,17 @@ def interpret_traits(line_data):
         normalized_length = length / hand_width
         normalized_height = height / hand_width
 
-        low_len, high_len = THRESHOLDS[name]["length"]
-        low_hgt, high_hgt = THRESHOLDS[name]["height"]
+        if name == "heart":
+            low, mid, high = THRESHOLDS["heart"]["length"]
+            trait_length = get_trait_by_value(normalized_length, low, mid, high, TRAITS["heart"]["length"])
+        else:
+            low, high = THRESHOLDS[name]["length"]
+            trait_length = get_trait_by_value(normalized_length, low, high, TRAITS[name]["length"])
 
-        traits = [
-            get_trait_by_value(normalized_length, low_len, high_len, TRAITS[name]["length"]),
-            get_trait_by_value(normalized_height, low_hgt, high_hgt, TRAITS[name]["height"])
-        ]
+        low_hgt, high_hgt = THRESHOLDS[name]["height"]
+        trait_height = get_trait_by_value(normalized_height, low_hgt, high_hgt, TRAITS[name]["height"])
+
+        traits = [trait_length, trait_height]
 
         interpretations.append({
             "title": TRAITS[name]["title"],
