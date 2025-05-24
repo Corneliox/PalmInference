@@ -210,19 +210,23 @@ def interpret_traits(line_data):
 
         if name == "heart":
             low, mid, high = THRESHOLDS["heart"]["length"]
-            trait_length = get_trait_by_value(normalized_length, low, mid, high, TRAITS["heart"]["length"])
+            trait_length = get_trait_by_value(normalized_length, low, mid, high, trait_dict=TRAITS["heart"]["length"])
         else:
             low, high = THRESHOLDS[name]["length"]
-            trait_length = get_trait_by_value(normalized_length, low, high, TRAITS[name]["length"])
+            trait_length = get_trait_by_value(normalized_length, low, high, trait_dict=TRAITS[name]["length"])
 
         low_hgt, high_hgt = THRESHOLDS[name]["height"]
-        trait_height = get_trait_by_value(normalized_height, low_hgt, high_hgt, TRAITS[name]["height"])
+        trait_height = get_trait_by_value(normalized_height, low_hgt, high_hgt, trait_dict=TRAITS[name]["height"])
 
         traits = [trait_length, trait_height]
 
         interpretations.append({
             "title": TRAITS[name]["title"],
-            "traits": traits
+            "traits": traits,
+            "x1": x1,
+            "y1": y1,
+            "x2": x2,
+            "y2": y2
         })
 
     return interpretations
@@ -371,9 +375,22 @@ def capture():
             "head": next((t['traits'] for t in traits if "Head Line" in t['title']), None)
         }
 
+        coords_dict = {
+            "life": next(({
+                "x1": t['x1'], "y1": t['y1'], "x2": t['x2'], "y2": t['y2']
+            } for t in traits if "Life Line" in t['title']), None),
+            "heart": next(({
+                "x1": t['x1'], "y1": t['y1'], "x2": t['x2'], "y2": t['y2']
+            } for t in traits if "Heart Line" in t['title']), None),
+            "head": next(({
+                "x1": t['x1'], "y1": t['y1'], "x2": t['x2'], "y2": t['y2']
+            } for t in traits if "Head Line" in t['title']), None)
+        }
+
         return jsonify({
             "image": encoded_img,
             "personality": trait_dict,
+            "coordinates": coords_dict,
             "dominant_line": dominant_line
         })
 
