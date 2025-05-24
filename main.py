@@ -9,6 +9,7 @@ import time
 
 app = Flask(__name__)
 model = YOLO("palm.pt")
+# model = YOLO("best.pt")
 
 # Kamera setup
 cap = cv2.VideoCapture(0)
@@ -205,7 +206,30 @@ def interpret_traits(line_data):
 
     return interpretations
 
-
+def get_dominant_line(line_data):
+    """
+    Returns the dominant line ('life', 'heart', or 'head') based on the highest normalized length.
+    Returns a dict: { 'name': ..., 'normalized_length': ... }
+    """
+    hand_width = calculate_x_hand_ref(line_data)
+    normalized_lengths = {}
+    for line in line_data:
+        name = line["name"].lower()
+        if name in ["feel", "heart"]:
+            name = "heart"
+        elif name in ["brain", "head"]:
+            name = "head"
+        elif name == "life":
+            name = "life"
+        else:
+            continue
+        x1, y1, x2, y2 = line["x1"], line["y1"], line["x2"], line["y2"]
+        length = get_euclidean_length(x1, y1, x2, y2)
+        normalized_lengths[name] = length / hand_width
+    if not normalized_lengths:
+        return None
+    dominant = max(normalized_lengths.items(), key=lambda x: x[1])
+    return {"name": dominant[0], "normalized_length": dominant[1]}
 
 # def generate_frames():
     # global last_frame, streaming
@@ -314,6 +338,7 @@ def capture():
                 })
 
         traits = interpret_traits(lines_info)
+        dominant_line = get_dominant_line(lines_info)
 
         annotated = results.plot()
         _, buffer = cv2.imencode('.jpg', annotated)
@@ -327,7 +352,8 @@ def capture():
 
         return jsonify({
             "image": encoded_img,
-            "personality": trait_dict
+            "personality": trait_dict,
+            "dominant_line": dominant_line
         })
 
     except Exception as e:
