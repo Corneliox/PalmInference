@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Palm Inference Cam</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
 
@@ -28,6 +31,13 @@
     <img id="result-img" class="mt-4 w-full rounded-lg" />
     <h2 class="text-lg font-semibold mb-2">🔍 Hasil Ramalan:</h2>
     <div id="ramalan-text" class="text-base leading-relaxed space-y-2 mb-4"></div>
+    
+    <button id="share-wa-btn" class="mt-4 w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 flex items-center justify-center gap-2 hidden">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
+      </svg>
+      Bagikan Hasil
+    </button>
   </div>
 
 <script>
@@ -37,9 +47,11 @@
     const resultArea = document.getElementById('result-area');
     const resultText = document.getElementById('ramalan-text');
     const resultImg = document.getElementById('result-img');
+    
+    // BARU: Variabel tombol Share
+    const shareBtn = document.getElementById('share-wa-btn');
 
-    // --- Variabel alignment DIHAPUS ---
-    let isCooldown = false; // Cooldown untuk jepret manual
+    let isCooldown = false;
 
     // --- 1. Fungsi Kontrol Stream ---
     function startStream() {
@@ -47,8 +59,7 @@
         .then(res => res.json())
         .then(data => {
           console.log(data);
-          videoStream.src = '/video_feed?' + new Date().getTime(); // Force refresh
-          // --- PANGGILAN startAlignmentCheck() DIHAPUS ---
+          videoStream.src = '/video_feed?' + new Date().getTime();
         });
     }
 
@@ -57,17 +68,15 @@
         .then(res => res.json())
         .then(data => {
           console.log(data);
-          videoStream.src = ''; // Stop loading frames
-          // --- PANGGILAN stopAlignmentCheck() DIHAPUS ---
+          videoStream.src = '';
+          // BARU: Sembunyikan juga area hasil saat stop
+          resultArea.classList.add('hidden'); 
         });
     }
 
-    // --- 2. FUNGSI ALIGNMENT (startAlignmentCheck / stopAlignmentCheck) DIHAPUS ---
-
-
-    // --- 3. Fungsi Capture Utama (Hanya untuk manual) ---
+    // --- 3. Fungsi Capture Utama ---
     async function performCapture() {
-      if (isCooldown) return; // Hentikan jika masih cooldown
+      if (isCooldown) return; 
       isCooldown = true;
       console.log("Jepret dipicu...");
 
@@ -79,6 +88,8 @@
           resultText.innerHTML = `<span class="text-red-400">❌ Error: ${data.error}</span>`;
           resultImg.src = '';
           resultArea.classList.remove('hidden');
+          // Sembunyikan tombol share jika error
+          shareBtn.classList.add('hidden'); 
           return;
         }
 
@@ -98,14 +109,17 @@
         resultText.innerHTML = html;
         resultImg.src = 'data:image/jpeg;base64,' + image;
         resultArea.classList.remove('hidden');
-      
+        
+        // BARU: Tampilkan tombol share jika berhasil
+        shareBtn.classList.remove('hidden');
+
       } catch (err) {
         console.error("Proses capture gagal:", err);
         resultText.innerHTML = `<span class="text-red-400">❌ Error: ${err.message}</span>`;
         resultArea.classList.remove('hidden');
+        shareBtn.classList.add('hidden');
       
       } finally {
-        // Atur cooldown 3 detik
         setTimeout(() => {
           isCooldown = false;
         }, 3000);
@@ -123,15 +137,66 @@
         return block;
     }
 
-    // --- 5. Event Listeners (Hanya untuk manual capture) ---
+    // --- BARU: Fungsi untuk Share ke WA ---
+    async function shareResultToWA() {
+      // 1. Cek apakah browser mendukung Web Share API
+      if (!navigator.share) {
+        alert("Browser Anda tidak mendukung fitur 'Share'. Coba di browser HP (Chrome/Safari).");
+        return;
+      }
 
-    // Listener untuk Tombol Capture (Force Capture)
+      // Sembunyikan tombol share sementara untuk screenshot bersih
+      shareBtn.classList.add('hidden');
+      
+      // 2. Ambil screenshot 'div' hasil
+      const canvas = await html2canvas(document.getElementById('result-area'), {
+          useCORS: true, // Untuk jaga-jaga jika ada gambar eksternal
+          logging: false
+      });
+      
+      // Tampilkan lagi tombolnya
+      shareBtn.classList.remove('hidden');
+      
+      // 3. Konversi 'canvas' (screenshot) menjadi 'File'
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      const file = new File([blob], 'ramalan.png', { type: 'image/png' });
+      const filesArray = [file];
+      
+      const shareText = "Haloo.. Ini ramalan kamu hari ini";
+
+      // 4. Panggil API Share bawaan OS
+      try {
+        if (!navigator.canShare({ files: filesArray })) {
+            // Jika tidak bisa share file (misal di beberapa browser desktop)
+            // Kita coba share teks-nya saja
+            await navigator.share({
+                title: 'Hasil Ramalan',
+                text: shareText
+            });
+            alert("Browser tidak mendukung share gambar, hanya teks yang dibagikan.");
+        } else {
+            // Ini adalah skenario ideal (di HP)
+            await navigator.share({
+                files: filesArray,
+                title: 'Hasil Ramalan',
+                text: shareText
+            });
+        }
+      } catch (err) {
+        // Ini terjadi jika pengguna membatalkan 'share'
+        console.log('Pengguna membatalkan share:', err.message);
+      }
+    }
+
+    // --- 5. Event Listeners ---
     captureBtn.addEventListener('click', performCapture);
+    
+    // BARU: Event listener untuk tombol share
+    shareBtn.addEventListener('click', shareResultToWA);
 
-    // Listener untuk Spacebar / Enter
     document.addEventListener("keydown", function (event) {
       if (event.code === "Space" || event.code === "Enter") {
-        event.preventDefault(); // Mencegah scroll
+        event.preventDefault(); 
         performCapture();
       }
     });
