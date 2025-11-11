@@ -12,7 +12,7 @@ model = YOLO("palm.pt")
 # model = YOLO("best.pt")
 
 # Kamera setup
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(1)
 if not cap.isOpened():
     raise RuntimeError("❌ Kamera tidak dapat dibuka. Pastikan tidak digunakan oleh aplikasi lain.")
 
@@ -97,24 +97,28 @@ TRAITS = {
     },
     "heart": {
         "title": "💓 Heart Line",
+        # ==========================================================
+        # BLOK DIPERBARUI 1: 'heart' -> 'length' (Diterjemahkan & Diseimbangkan)
+        # ==========================================================
         "length": {
             "extra_long": {
-                "result": "💞 Unwavering Devotion (Pengabdian Tak Tergoyahkan)",
-                "explanation": "Individuals with an exceptionally long heart line often display an unwavering devotion and loyalty in their relationships. They may be prone to investing heavily in their loved ones, sometimes at the expense of their own needs."
+                "result": "💞 Pengabdian Total",
+                "explanation": "Menunjukkan pengabdian dan kesetiaan yang luar biasa dalam hubungan. Anda sangat totalitas dalam mencintai, terkadang mengorbankan kebutuhan pribadi."
             },
             "long": {
-                "result": "💖 Deeply Expressive (Sangat Ekspresif)",
-                "explanation": "People with an extended heart line typically have a deep capacity for emotional expression and a strong desire for intimacy. They may be drawn to intense, all-encompassing relationships and have a heightened sensitivity to the emotional needs of others."
+                "result": "💖 Sangat Ekspresif",
+                "explanation": "Menandakan kapasitas emosional yang dalam dan keinginan kuat untuk keintiman. Anda ekspresif secara romantis dan sensitif terhadap orang lain."
             },
             "mid": {
-                "result": "🤝 Balanced & Empathetic (Seimbang & Empati)",
-                "explanation": "Those with a heart line of moderate length often exhibit a balanced and empathetic approach to their emotional life. They are able to strike a harmonious equilibrium between attending to their own needs and being considerate of their partner's or loved one's feelings."
+                "result": "🤝 Seimbang & Empati",
+                "explanation": "Menunjukkan pendekatan yang seimbang secara emosional. Anda mampu menyelaraskan kebutuhan pribadi dengan perasaan pasangan atau orang terkasih."
             },
             "short": {
-                "result": "🧍 Self-Focused (Fokus pada Diri Sendiri)",
-                "explanation": "Individuals with a short heart line tend to be more self-focused and prioritize their own needs and desires in relationships. They may have a more pragmatic approach to love, valuing their independence and personal boundaries."
+                "result": "🧍 Fokus pada Diri Sendiri",
+                "explanation": "Cenderung lebih pragmatis dan fokus pada kebutuhan pribadi dalam hubungan. Anda menghargai kemandirian dan batasan yang jelas."
             }
         },
+        # ==========================================================
         "height": {
             "high": {
                 "result": "🌊 Emotional (Emosional)",
@@ -146,20 +150,24 @@ TRAITS = {
                 "explanation": "Anda langsung pada tujuan, praktis, dan tidak mudah terdistraksi."
             }
         },
+        # ==========================================================
+        # BLOK DIPERBARUI 2: 'head' -> 'height' (Diseimbangkan)
+        # ==========================================================
         "height": {
             "high": {
-                "result": "🎨 Creative (Kreatif)",
-                "explanation": "Anda suka berpikir out-of-the-box dan penuh imajinasi."
+                "result": "🎨 Kreatif & Imajinatif",
+                "explanation": "Menunjukkan pikiran yang sangat imajinatif dan tidak konvensional. Anda unggul dalam berpikir 'di luar kotak' dan menemukan solusi unik."
             },
             "mid": {
-                "result": "⚖️ Balanced Mindset (Pola Pikir Seimbang)",
-                "explanation": "Anda bisa berpikir logis maupun kreatif tergantung situasi."
+                "result": "⚖️ Pola Pikir Seimbang",
+                "explanation": "Menandakan pikiran yang seimbang, mampu menangani pemikiran praktis sekaligus abstrak. Anda logis namun tetap terbuka pada ide-ide baru."
             },
             "low": {
-                "result": "🧠 Logical (Logis)",
-                "explanation": "Anda suka berpikir sistematis dan analitis dalam menyelesaikan masalah."
+                "result": "🧠 Logis & Praktis",
+                "explanation": "Menunjukkan gaya berpikir yang praktis, konkret, dan langsung pada intinya. Anda lebih menyukai fakta dan metode yang telah terbukti."
             }
         }
+        # ==========================================================
     }
 }
 
@@ -404,4 +412,4 @@ def cleanup():
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5001)
