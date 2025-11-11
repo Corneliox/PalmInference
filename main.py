@@ -12,14 +12,18 @@ model = YOLO("palm.pt")
 # model = YOLO("best.pt")
 
 # Kamera setup
-cap = cv2.VideoCapture(1)
-if not cap.isOpened():
-    raise RuntimeError("❌ Kamera tidak dapat dibuka. Pastikan tidak digunakan oleh aplikasi lain.")
+cap = cv2.VideoCapture(1, cv2.CAP_DSHOW) 
+# if not cap.isOpened():
+#     cap = cv2.VideoCapture(1, cv2.CAP_DSHOW) 
+#     if not cap.isOpened():
+#         raise RuntimeError("❌ Kamera tidak dapat dibuka. Pastikan tidak digunakan oleh aplikasi lain dan coba indeks 0, 1, atau 2.")
 
 # Global variables
 last_frame = None
 frame_lock = threading.Lock()
 streaming = False
+
+# --- DIHAPUS --- Variabel 'is_hand_aligned' dan 'alignment_lock' tidak diperlukan lagi
 
 def get_euclidean_length(x1, y1, x2, y2):
     return ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
@@ -49,16 +53,16 @@ def calculate_x_hand_ref(line_data):
 # Thresholds for normalized values (relative to hand width)
 THRESHOLDS = {
     "life": {
-        "length": (0.33, 0.66),
-        "height": (0.33, 0.66)
+        "length": (0.60, 0.92),
+        "height": (0.60, 0.92)
     },
     "heart": {
-        "length": (0.25, 0.45, 0.7),  # short < 0.25, mid 0.25-0.45, long 0.45-0.7, extra-long > 0.7
-        "height": (0.33, 0.66)
+        "length": (0.53, 0.76, 0.92),  # extra thresholds for extra-long
+        "height": (0.56, 0.92)
     },
     "head": {
-        "length": (0.33, 0.66),
-        "height": (0.33, 0.66)
+        "length": (0.58, 0.92),
+        "height": (0.59, 0.92)
     }
 }
 
@@ -97,9 +101,6 @@ TRAITS = {
     },
     "heart": {
         "title": "💓 Heart Line",
-        # ==========================================================
-        # BLOK DIPERBARUI 1: 'heart' -> 'length' (Diterjemahkan & Diseimbangkan)
-        # ==========================================================
         "length": {
             "extra_long": {
                 "result": "💞 Pengabdian Total",
@@ -118,7 +119,6 @@ TRAITS = {
                 "explanation": "Cenderung lebih pragmatis dan fokus pada kebutuhan pribadi dalam hubungan. Anda menghargai kemandirian dan batasan yang jelas."
             }
         },
-        # ==========================================================
         "height": {
             "high": {
                 "result": "🌊 Emotional (Emosional)",
@@ -150,9 +150,6 @@ TRAITS = {
                 "explanation": "Anda langsung pada tujuan, praktis, dan tidak mudah terdistraksi."
             }
         },
-        # ==========================================================
-        # BLOK DIPERBARUI 2: 'head' -> 'height' (Diseimbangkan)
-        # ==========================================================
         "height": {
             "high": {
                 "result": "🎨 Kreatif & Imajinatif",
@@ -167,7 +164,6 @@ TRAITS = {
                 "explanation": "Menunjukkan gaya berpikir yang praktis, konkret, dan langsung pada intinya. Anda lebih menyukai fakta dan metode yang telah terbukti."
             }
         }
-        # ==========================================================
     }
 }
 
@@ -264,67 +260,66 @@ def get_dominant_line(line_data):
     dominant = max(normalized_lengths.items(), key=lambda x: x[1])
     return {"name": dominant[0], "normalized_length": dominant[1]}
 
-# def generate_frames():
-    # global last_frame, streaming
-    # while True:
-    #     if not streaming:
-    #         black = np.zeros((480, 640, 3), dtype=np.uint8)
-    #         ret, buffer = cv2.imencode('.jpg', black)
-    #         yield (b'--frame\r\n'
-    #                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-    #         continue
 
-    #     success, frame = cap.read()
-    #     if not success:
-    #         continue
-
-    #     with frame_lock:
-    #         last_frame = frame.copy()
-
-    #     results = model(frame)[0]
-    #     annotated = results.plot()
-    #     ret, buffer = cv2.imencode('.jpg', annotated)
-    #     if not ret:
-    #         continue
-    #     yield (b'--frame\r\n'
-    #            b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-
+# --- FUNGSI GENERATE_FRAMES YANG DISERHANAKAN ---
 def generate_frames():
     global last_frame, streaming
-    last_detection_time = 0  
-    detection_interval = 0  
-
+    
     while True:
-        if not streaming:
-            black = np.zeros((720, 1280, 3), dtype=np.uint8)
-            ret, buffer = cv2.imencode('.jpg', black)
+        try: 
+            if not streaming:
+                # Tampilkan layar hitam jika stream berhenti
+                black = np.zeros((720, 1280, 3), dtype=np.uint8)
+                ret, buffer = cv2.imencode('.jpg', black)
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+                time.sleep(0.1) 
+                continue
+
+            success, frame = cap.read()
+            if not success:
+                print("Gagal membaca frame dari kamera.")
+                time.sleep(0.5)
+                continue
+
+            # Simpan frame bersih SEBELUM anotasi
+            with frame_lock:
+                last_frame = frame.copy() 
+
+            # Kita tetap jalankan model agar deteksi garis muncul di stream
+            results = model(frame)[0]
+            annotated = results.plot() 
+            
+            # --- LOGIKA ALIGNMENT DIHAPUS ---
+
+            # Gambar Garis Panduan
+            height, width = annotated.shape[:2]
+            center_x = width // 2
+            
+            # --- WARNA DIPAKSA MERAH ---
+            line_color = (0, 0, 255) # Selalu Merah
+
+            # Gambar garis di frame yang akan di-stream
+            cv2.line(annotated, (center_x, 0), (center_x, height), line_color, 2)
+
+            # Encode dan kirim frame
+            ret, buffer = cv2.imencode('.jpg', annotated)
+            if not ret:
+                print("Gagal encode frame.")
+                continue
+
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-            continue
 
-        success, frame = cap.read()
-        if not success:
-            continue
-
-        current_time = time.time()
-
-        with frame_lock:
-            last_frame = frame.copy()
-
-        
-        if current_time - last_detection_time >= detection_interval:
-            results = model(frame)[0]
-            annotated = results.plot()
-            last_detection_time = current_time
-        else:
-            annotated = frame 
-
-        ret, buffer = cv2.imencode('.jpg', annotated)
-        if not ret:
-            continue
-
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+        except Exception as e:
+            # Blok 'except' tetap penting agar stream tidak mati
+            print(f"❌ Terjadi error di generate_frames: {e}")
+            if last_frame is not None:
+                ret, buffer = cv2.imencode('.jpg', last_frame)
+                if ret:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+            time.sleep(0.1)
 
 @app.route('/')
 def index():
@@ -346,16 +341,19 @@ def stop_stream():
     streaming = False
     return jsonify({"status": "stream stopped"})
 
+# --- ENDPOINT /alignment_status DIHAPUS ---
+
 @app.route('/capture', methods=['POST'])
 def capture():
     global last_frame
     with frame_lock:
         if last_frame is None:
             return jsonify({"error": "No frame available"}), 500
-        frame = last_frame.copy()
+        # Menggunakan 'last_frame' yang bersih (tanpa garis panduan)
+        frame = last_frame.copy() 
 
     try:
-        results = model(frame)[0]
+        results = model(frame)[0] # Proses ulang frame bersih
         lines_info = []
 
         for box, cls_id in zip(results.boxes.xyxy, results.boxes.cls):
@@ -373,8 +371,10 @@ def capture():
         traits = interpret_traits(lines_info)
         dominant_line = get_dominant_line(lines_info)
 
-        annotated = results.plot()
+        # 'results.plot()' akan menggambar deteksi di frame bersih
+        annotated = results.plot() 
         _, buffer = cv2.imencode('.jpg', annotated)
+        # Hasil 'encoded_img' ini TIDAK akan memiliki garis panduan
         encoded_img = base64.b64encode(buffer).decode('utf-8')
 
         trait_dict = {

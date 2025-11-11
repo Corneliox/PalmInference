@@ -19,7 +19,7 @@
     <button onclick="stopStream()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Stop</button>
   </div>
 
-  <button id="capture-btn" class="mt-6 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded shadow">
+  <button id="capture-btn" class="mt-6 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded shadow transition-all duration-200">
     📸 Jepret & Ramalan
   </button>
   <p class="mt-2 text-sm text-gray-400">Tekan tombol di atas untuk mengambil gambar dan mendapatkan ramalan.</p>
@@ -30,19 +30,25 @@
     <div id="ramalan-text" class="text-base leading-relaxed space-y-2 mb-4"></div>
   </div>
 
-  <script>
+<script>
+    // --- Variabel Global ---
     const videoStream = document.getElementById('video-stream');
     const captureBtn = document.getElementById('capture-btn');
     const resultArea = document.getElementById('result-area');
     const resultText = document.getElementById('ramalan-text');
     const resultImg = document.getElementById('result-img');
 
+    // --- Variabel alignment DIHAPUS ---
+    let isCooldown = false; // Cooldown untuk jepret manual
+
+    // --- 1. Fungsi Kontrol Stream ---
     function startStream() {
       fetch('/start', { method: 'POST' })
         .then(res => res.json())
         .then(data => {
           console.log(data);
-          videoStream.src = '/video_feed?' + new Date().getTime(); // force refresh
+          videoStream.src = '/video_feed?' + new Date().getTime(); // Force refresh
+          // --- PANGGILAN startAlignmentCheck() DIHAPUS ---
         });
     }
 
@@ -52,104 +58,84 @@
         .then(data => {
           console.log(data);
           videoStream.src = ''; // Stop loading frames
+          // --- PANGGILAN stopAlignmentCheck() DIHAPUS ---
         });
     }
 
-    captureBtn.addEventListener('click', async () => {
-      const res = await fetch('/capture', { method: 'POST' });
-      const data = await res.json();
+    // --- 2. FUNGSI ALIGNMENT (startAlignmentCheck / stopAlignmentCheck) DIHAPUS ---
 
-      if (data.error) {
-        resultText.innerHTML = `<span class="text-red-400">❌ Error: ${data.error}</span>`;
-        resultImg.src = '';
+
+    // --- 3. Fungsi Capture Utama (Hanya untuk manual) ---
+    async function performCapture() {
+      if (isCooldown) return; // Hentikan jika masih cooldown
+      isCooldown = true;
+      console.log("Jepret dipicu...");
+
+      try {
+        const res = await fetch('/capture', { method: 'POST' });
+        const data = await res.json();
+
+        if (data.error) {
+          resultText.innerHTML = `<span class="text-red-400">❌ Error: ${data.error}</span>`;
+          resultImg.src = '';
+          resultArea.classList.remove('hidden');
+          return;
+        }
+
+        const { personality, image } = data;
+        let html = '';
+
+        if (personality.life && Array.isArray(personality.life)) {
+          html += formatLine("🌱", "Life Line", personality.life);
+        }
+        if (personality.heart && Array.isArray(personality.heart)) {
+          html += formatLine("💓", "Heart Line", personality.heart);
+        }
+        if (personality.head && Array.isArray(personality.head)) {
+          html += formatLine("🧠", "Head Line", personality.head);
+        }
+
+        resultText.innerHTML = html;
+        resultImg.src = 'data:image/jpeg;base64,' + image;
         resultArea.classList.remove('hidden');
-        return;
-      }
-
-      const { personality, image } = data;
-      let html = '';
-
-
-      // function formatLine(titleEmoji, lineName, traitsArray) {
-      //   let block = `<div class="mb-3"><p class="mb-1 font-semibold text-white">${titleEmoji} ${lineName}</p>`;
-      //   traitsArray.forEach(trait => {
-      //     block += `<div class="ml-4 mb-2">
-      //                 <p class="text-indigo-400 font-semibold">🔸 <span class="text-blue-300">${trait.result}</span></p>\n<p class="text-gray-300 text-sm ml-6">  ${trait.explanation}</p>
-      //               </div>`;
-      //   });
-      //   block += `</div>`;
-      //   return block;
-      // }
-
-      function formatLine(titleEmoji, lineName, traitsArray) {
-        let block = `<div class="mb-4 px-4 py-2 bg-gray-800 rounded-md text-white whitespace-pre-wrap font-mono text-sm">`;
-        block += `${titleEmoji} ${lineName}\n`;
-
-        traitsArray.forEach(trait => {
-          block += `\t🔸 ${trait.result}\n\t  ${trait.explanation}\n\n`;
-        });
-
-        block += `</div>`;
-        return block;
-      }
-
-      // Evet Listener for Enter and Space key
-
-      // document.addEventListener("keydown", function (event) {
-      //   const btn = document.getElementById("capture-btn");
-
-      //   // Check if the user pressed Space or Enter
-      //   if (event.code === "Space" || event.code === "Enter") {
-      //     event.preventDefault(); // prevent default scroll or form submission
-      //     btn.click(); // simulate a click on the button
-      //   }
-      // });
-      const captureBtn = document.getElementById("capture-btn");
-      let isCooldown = false; // to prevent multiple triggers
-
-      function triggerCapture() {
-        if (isCooldown) return; // skip if still in cooldown
-
-        isCooldown = true;
-        captureBtn.click(); // trigger the button's click event
-
-        // Set a cooldown duration (e.g., 3000 ms = 3 seconds)
+      
+      } catch (err) {
+        console.error("Proses capture gagal:", err);
+        resultText.innerHTML = `<span class="text-red-400">❌ Error: ${err.message}</span>`;
+        resultArea.classList.remove('hidden');
+      
+      } finally {
+        // Atur cooldown 3 detik
         setTimeout(() => {
           isCooldown = false;
         }, 3000);
       }
+    }
 
-      // Allow keypress (Space or Enter)
-      document.addEventListener("keydown", function (event) {
-        if (event.code === "Space" || event.code === "Enter") {
-          event.preventDefault(); // prevent default behavior
-          triggerCapture();
-        }
-      });
+    // --- 4. Fungsi Helper Formatting ---
+    function formatLine(titleEmoji, lineName, traitsArray) {
+        let block = `<div class="mb-4 px-4 py-2 bg-gray-700 rounded-md text-white whitespace-pre-wrap font-mono text-sm">`;
+        block += `${titleEmoji} ${lineName}\n`;
+        traitsArray.forEach(trait => {
+          block += `\t🔸 ${trait.result}\n\t  ${trait.explanation}\n\n`;
+        });
+        block += `</div>`;
+        return block;
+    }
 
-      // Also wrap the button's actual click
-      captureBtn.addEventListener("click", function (event) {
-        if (isCooldown) {
-          event.preventDefault(); // prevent execution
-          return;
-        }
-        triggerCapture();
-      });
+    // --- 5. Event Listeners (Hanya untuk manual capture) ---
 
-      if (personality.life && Array.isArray(personality.life)) {
-        html += formatLine("🌱", "Life Line", personality.life);
+    // Listener untuk Tombol Capture (Force Capture)
+    captureBtn.addEventListener('click', performCapture);
+
+    // Listener untuk Spacebar / Enter
+    document.addEventListener("keydown", function (event) {
+      if (event.code === "Space" || event.code === "Enter") {
+        event.preventDefault(); // Mencegah scroll
+        performCapture();
       }
-      if (personality.heart && Array.isArray(personality.heart)) {
-        html += formatLine("💓", "Heart Line", personality.heart);
-      }
-      if (personality.head && Array.isArray(personality.head)) {
-        html += formatLine("🧠", "Head Line", personality.head);
-      }
-
-      resultText.innerHTML = html;
-      resultImg.src = 'data:image/jpeg;base64,' + image;
-      resultArea.classList.remove('hidden');
     });
-  </script>
+
+</script>
 </body>
 </html>
