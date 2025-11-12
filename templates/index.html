@@ -5,9 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Palm Inference Cam</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-
+  <style>
+    /* Style tambahan untuk modal */
+    .modal-overlay {
+      transition: opacity 0.3s ease;
+    }
+  </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
 
@@ -40,6 +44,36 @@
     </button>
   </div>
 
+  <div id="share-modal" class="modal-overlay fixed inset-0 w-full h-full flex items-center justify-center bg-black bg-opacity-75 hidden z-50 p-4">
+    <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-xl font-semibold">Bagikan Hasil Ramalan</h3>
+        <button onclick="closeShareModal()" class="text-gray-400 hover:text-white">&times;</button>
+      </div>
+      
+      <div class="mb-4 p-4 border border-gray-700 rounded-lg">
+        <p class="font-semibold text-lg">Opsi 1: Bagikan Gambar + Teks</p>
+        <p class="text-sm text-gray-300 mb-3">(Rekomendasi - Untuk kontak tersimpan)</p>
+        <button id="share-image-btn" class="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+          Bagikan Gambar (Buka Menu Share)
+        </button>
+      </div>
+
+      <div class="p-4 border border-gray-700 rounded-lg">
+        <p class="font-semibold text-lg">Opsi 2: Teks ke Nomor Baru</p>
+        <p class="text-sm text-gray-300 mb-3">(Hanya Teks Ramalan, Tanpa Gambar)</p>
+        <div class="flex flex-col gap-2">
+          <input type="tel" id="wa-number-input" placeholder="Contoh: 08123456789" class="p-2 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <button id="share-text-btn" class="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
+            Kirim Teks via WA
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
 <script>
     // --- Variabel Global ---
     const videoStream = document.getElementById('video-stream');
@@ -47,11 +81,18 @@
     const resultArea = document.getElementById('result-area');
     const resultText = document.getElementById('ramalan-text');
     const resultImg = document.getElementById('result-img');
-    
-    // BARU: Variabel tombol Share
     const shareBtn = document.getElementById('share-wa-btn');
+    
+    // Variabel Modal
+    const shareModal = document.getElementById('share-modal');
+    const shareImageBtn = document.getElementById('share-image-btn');
+    const shareTextBtn = document.getElementById('share-text-btn');
+    const waNumberInput = document.getElementById('wa-number-input');
 
     let isCooldown = false;
+    
+    // --- BARU: Variabel untuk menyimpan data ramalan mentah ---
+    let currentPersonalityData = null;
 
     // --- 1. Fungsi Kontrol Stream ---
     function startStream() {
@@ -69,7 +110,6 @@
         .then(data => {
           console.log(data);
           videoStream.src = '';
-          // BARU: Sembunyikan juga area hasil saat stop
           resultArea.classList.add('hidden'); 
         });
     }
@@ -88,14 +128,17 @@
           resultText.innerHTML = `<span class="text-red-400">❌ Error: ${data.error}</span>`;
           resultImg.src = '';
           resultArea.classList.remove('hidden');
-          // Sembunyikan tombol share jika error
           shareBtn.classList.add('hidden'); 
+          currentPersonalityData = null; // Reset data jika error
           return;
         }
 
         const { personality, image } = data;
+        
+        // --- BARU: Simpan data mentah ke variabel global ---
+        currentPersonalityData = personality; 
+        
         let html = '';
-
         if (personality.life && Array.isArray(personality.life)) {
           html += formatLine("🌱", "Life Line", personality.life);
         }
@@ -109,8 +152,6 @@
         resultText.innerHTML = html;
         resultImg.src = 'data:image/jpeg;base64,' + image;
         resultArea.classList.remove('hidden');
-        
-        // BARU: Tampilkan tombol share jika berhasil
         shareBtn.classList.remove('hidden');
 
       } catch (err) {
@@ -118,6 +159,7 @@
         resultText.innerHTML = `<span class="text-red-400">❌ Error: ${err.message}</span>`;
         resultArea.classList.remove('hidden');
         shareBtn.classList.add('hidden');
+        currentPersonalityData = null; // Reset data jika error
       
       } finally {
         setTimeout(() => {
@@ -126,7 +168,7 @@
       }
     }
 
-    // --- 4. Fungsi Helper Formatting ---
+    // --- 4. Fungsi Helper Formatting (untuk HTML) ---
     function formatLine(titleEmoji, lineName, traitsArray) {
         let block = `<div class="mb-4 px-4 py-2 bg-gray-700 rounded-md text-white whitespace-pre-wrap font-mono text-sm">`;
         block += `${titleEmoji} ${lineName}\n`;
@@ -137,62 +179,115 @@
         return block;
     }
 
-    // --- BARU: Fungsi untuk Share ke WA ---
-    async function shareResultToWA() {
-      // 1. Cek apakah browser mendukung Web Share API
+    // --- 5. Fungsi Share dan Modal ---
+    
+    // Fungsi untuk membuka modal
+    function openShareModal() {
+      shareModal.classList.remove('hidden');
+    }
+    
+    // Fungsi untuk menutup modal
+    function closeShareModal() {
+      shareModal.classList.add('hidden');
+    }
+
+    // OPSI 1: Bagikan Gambar + Teks (via navigator.share)
+    async function shareWithImage() {
+      closeShareModal(); // Tutup modal dulu
+      
       if (!navigator.share) {
         alert("Browser Anda tidak mendukung fitur 'Share'. Coba di browser HP (Chrome/Safari).");
         return;
       }
-
-      // Sembunyikan tombol share sementara untuk screenshot bersih
+      
+      // Sembunyikan tombol share di div hasil agar tidak ikut ter-screenshot
       shareBtn.classList.add('hidden');
+      const canvas = await html2canvas(document.getElementById('result-area'), { useCORS: true, logging: false });
+      shareBtn.classList.remove('hidden'); // Tampilkan lagi
       
-      // 2. Ambil screenshot 'div' hasil
-      const canvas = await html2canvas(document.getElementById('result-area'), {
-          useCORS: true, // Untuk jaga-jaga jika ada gambar eksternal
-          logging: false
-      });
-      
-      // Tampilkan lagi tombolnya
-      shareBtn.classList.remove('hidden');
-      
-      // 3. Konversi 'canvas' (screenshot) menjadi 'File'
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
       const file = new File([blob], 'ramalan.png', { type: 'image/png' });
       const filesArray = [file];
-      
       const shareText = "Haloo.. Ini ramalan kamu hari ini";
 
-      // 4. Panggil API Share bawaan OS
       try {
         if (!navigator.canShare({ files: filesArray })) {
-            // Jika tidak bisa share file (misal di beberapa browser desktop)
-            // Kita coba share teks-nya saja
-            await navigator.share({
-                title: 'Hasil Ramalan',
-                text: shareText
-            });
-            alert("Browser tidak mendukung share gambar, hanya teks yang dibagikan.");
+          await navigator.share({ title: 'Hasil Ramalan', text: shareText });
         } else {
-            // Ini adalah skenario ideal (di HP)
-            await navigator.share({
-                files: filesArray,
-                title: 'Hasil Ramalan',
-                text: shareText
-            });
+          await navigator.share({ files: filesArray, title: 'Hasil Ramalan', text: shareText });
         }
       } catch (err) {
-        // Ini terjadi jika pengguna membatalkan 'share'
         console.log('Pengguna membatalkan share:', err.message);
       }
     }
 
-    // --- 5. Event Listeners ---
+    // OPSI 2: Bagikan Teks ke Nomor Baru (via wa.me)
+    // --- FUNGSI INI TELAH DIPERBARUI TOTAL ---
+    function shareTextToNumber() {
+      let phone = waNumberInput.value;
+      
+      // Bersihkan dan format nomor (ganti 0 -> 62)
+      phone = phone.replace(/\D/g, ''); // Hapus semua selain angka
+      if (phone.startsWith('0')) {
+        phone = '62' + phone.substring(1);
+      } else if (!phone.startsWith('62') && phone.length > 5) {
+        phone = '62' + phone; // Asumsi nomor Indonesia
+      }
+
+      if (phone.length < 10) {
+        alert("Nomor HP tidak valid. Masukkan nomor lengkap (misal: 0812...).");
+        return;
+      }
+
+      // 1. Cek apakah data ramalan ada di variabel global
+      if (!currentPersonalityData) {
+          alert("Data ramalan tidak ditemukan. Coba jepret ulang.");
+          return;
+      }
+
+      // 2. Buat string pesan baru dari data mentah
+      let messageBody = "Haloo.. Ini ramalan kamu hari ini:\n\n";
+
+      // Fungsi helper kecil untuk membuat format teks
+      const buildLineText = (emoji, title, traits) => {
+          if (traits && Array.isArray(traits)) {
+              messageBody += `${emoji} ${title}\n`;
+              traits.forEach((trait, index) => {
+                  messageBody += `${index + 1}. ${trait.result}\n`;
+                  messageBody += `- ${trait.explanation}\n`;
+                  // Beri jarak antar poin, tapi tidak di poin terakhir
+                  if (index < traits.length - 1) {
+                      messageBody += "\n";
+                  }
+              });
+              messageBody += "\n\n"; // Beri jarak antar Garis (Line)
+          }
+      };
+      
+      // 3. Bangun teksnya
+      buildLineText("🌱", "Life Line", currentPersonalityData.life);
+      buildLineText("💓", "Heart Line", currentPersonalityData.heart);
+      buildLineText("🧠", "Head Line", currentPersonalityData.head);
+
+      const shareText = messageBody.trim(); // Hapus spasi/newline ekstra di akhir
+
+      // 'encodeURIComponent' akan otomatis menangani semua baris baru dan emoji
+      const url = `https://wa.me/${phone}?text=${encodeURIComponent(shareText)}`;
+      
+      // Buka link di tab baru
+      window.open(url, '_blank');
+      closeShareModal();
+    }
+
+    // --- 6. Event Listeners ---
     captureBtn.addEventListener('click', performCapture);
     
-    // BARU: Event listener untuk tombol share
-    shareBtn.addEventListener('click', shareResultToWA);
+    // Tombol Share WA utama sekarang membuka modal
+    shareBtn.addEventListener('click', openShareModal);
+    
+    // Event listener untuk tombol di dalam modal
+    shareImageBtn.addEventListener('click', shareWithImage);
+    shareTextBtn.addEventListener('click', shareTextToNumber);
 
     document.addEventListener("keydown", function (event) {
       if (event.code === "Space" || event.code === "Enter") {
