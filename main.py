@@ -6,25 +6,104 @@ from ultralytics import YOLO
 import threading
 import atexit
 import time
+import sys
+import torch
 
 app = Flask(__name__)
+
+# Check for GPU
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(f"🚀 Using device: {device}")
+
 model = YOLO("palm.pt")
+model.to(device)
 # model = YOLO("best.pt")
 
-# Kamera setup
-cap = cv2.VideoCapture(1, cv2.CAP_DSHOW) 
-# if not cap.isOpened():
-#     cap = cv2.VideoCapture(1, cv2.CAP_DSHOW) 
-#     if not cap.isOpened():
-#         raise RuntimeError("❌ Kamera tidak dapat dibuka. Pastikan tidak digunakan oleh aplikasi lain dan coba indeks 0, 1, atau 2.")
+# --- CAMERA HANDLING CLASS ---
+class VideoCamera:
+    def __init__(self):
+        self.cap = None
+        self.lock = threading.Lock()
+        self.initialize_camera()
 
-# Global variables
+    def initialize_camera(self):
+        """Attempts to initialize the camera on available indices."""
+        if self.cap is not None:
+            self.cap.release()
+        
+        # Try indices 0 and 1 (common for built-in and external cams)
+        for index in [0, 1]:
+            # Try different backends: DSHOW is best for Windows, MSMF is fallback
+            for backend_name, backend in [("DSHOW", cv2.CAP_DSHOW), ("MSMF", cv2.CAP_MSMF), ("ANY", cv2.CAP_ANY)]:
+                print(f"Attempting to initialize camera at index {index} with {backend_name}...")
+                temp_cap = cv2.VideoCapture(index, backend)
+                
+                if temp_cap.isOpened():
+                    # FORCE RESOLUTION & MJPG: Fixes 'Grey/Static/Noise' issues
+                    temp_cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+                    temp_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                    temp_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                    temp_cap.set(cv2.CAP_PROP_FPS, 30)
+                    
+                    # Warmup: Read a few frames to ensure the stream is stable
+                    success_warmup = False
+                    for _ in range(5):
+                        ret, frame = temp_cap.read()
+                        if ret and frame is not None and frame.size > 0:
+                            success_warmup = True
+                    
+                    if success_warmup:
+                        self.cap = temp_cap
+                        actual_w = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+                        actual_h = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+                        print(f"✅ Camera initialized successfully on index {index} using {backend_name}")
+                        print(f"ℹ️  Actual Resolution: {int(actual_w)}x{int(actual_h)}")
+                        return
+                    else:
+                        print(f"⚠️ Camera at index {index} ({backend_name}) opened but returned invalid frames.")
+                        temp_cap.release()
+                else:
+                    print(f"⚠️ Failed to open camera at index {index} with {backend_name}")
+        
+        print("❌ CRITICAL: Could not initialize any camera.")
+        self.cap = None
+
+    def get_frame(self):
+        """Reads a frame safely. Re-initializes if necessary."""
+        with self.lock:
+            if self.cap is None or not self.cap.isOpened():
+                self.initialize_camera()
+                if self.cap is None:
+                    return None, False
+
+            try:
+                success, frame = self.cap.read()
+                if not success or frame is None or frame.size == 0:
+                    print("⚠️ Failed to read frame. Re-initializing...")
+                    self.initialize_camera()
+                    return None, False
+                return frame, True
+            except Exception as e:
+                print(f"❌ Error reading frame: {e}")
+                self.initialize_camera()
+                return None, False
+
+    def release(self):
+        with self.lock:
+            if self.cap is not None:
+                self.cap.release()
+                self.cap = None
+                print("Camera released.")
+
+# Initialize Camera Instance
+camera = VideoCamera()
+
+# Global variables for app state
 last_frame = None
 frame_lock = threading.Lock()
 streaming = False
 
-# --- DIHAPUS --- Variabel 'is_hand_aligned' dan 'alignment_lock' tidak diperlukan lagi
-
+# --- HELPER FUNCTIONS (Preserved) ---
 def get_euclidean_length(x1, y1, x2, y2):
     return ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
 
@@ -47,7 +126,7 @@ def calculate_x_hand_ref(line_data):
         ]
         x_ref = max(candidates) if candidates else 1.0
         return x_ref if x_ref > 0 else 1.0
-    print("Warning: Essential lines for X_hand_ref missing. Using default.")
+    # print("Warning: Essential lines for X_hand_ref missing. Using default.")
     return 200.0
 
 # Thresholds for normalized values (relative to hand width)
@@ -167,7 +246,6 @@ TRAITS = {
     }
 }
 
-
 def get_trait_by_value(value, *thresholds, trait_dict):
     # For Heart line length, support extra-long
     if "extra_long" in trait_dict:
@@ -188,7 +266,6 @@ def get_trait_by_value(value, *thresholds, trait_dict):
             return trait_dict["mid"]
         else:
             return trait_dict["low"]
-
 
 def interpret_traits(line_data):
     interpretations = []
@@ -236,10 +313,6 @@ def interpret_traits(line_data):
     return interpretations
 
 def get_dominant_line(line_data):
-    """
-    Returns the dominant line ('life', 'heart', or 'head') based on the highest normalized length.
-    Returns a dict: { 'name': ..., 'normalized_length': ... }
-    """
     hand_width = calculate_x_hand_ref(line_data)
     normalized_lengths = {}
     for line in line_data:
@@ -260,15 +333,14 @@ def get_dominant_line(line_data):
     dominant = max(normalized_lengths.items(), key=lambda x: x[1])
     return {"name": dominant[0], "normalized_length": dominant[1]}
 
-
-# --- FUNGSI GENERATE_FRAMES YANG DISERHANAKAN ---
+# --- FRAME GENERATION ---
 def generate_frames():
     global last_frame, streaming
     
     while True:
         try: 
             if not streaming:
-                # Tampilkan layar hitam jika stream berhenti
+                # Idle frame (black)
                 black = np.zeros((720, 1280, 3), dtype=np.uint8)
                 ret, buffer = cv2.imencode('.jpg', black)
                 yield (b'--frame\r\n'
@@ -276,51 +348,40 @@ def generate_frames():
                 time.sleep(0.1) 
                 continue
 
-            success, frame = cap.read()
-            if not success:
-                print("Gagal membaca frame dari kamera.")
+            # Get frame from robust camera class
+            frame, success = camera.get_frame()
+            if not success or frame is None:
+                print("Waiting for camera...")
                 time.sleep(0.5)
                 continue
 
-            # Simpan frame bersih SEBELUM anotasi
+            # Save clean frame safely
             with frame_lock:
                 last_frame = frame.copy() 
 
-            # Kita tetap jalankan model agar deteksi garis muncul di stream
-            results = model(frame)[0]
+            # Run YOLO (Inference)
+            results = model(frame, conf=0.5)[0]
             annotated = results.plot() 
             
-            # --- LOGIKA ALIGNMENT DIHAPUS ---
-
-            # Gambar Garis Panduan
+            # Draw Guidelines (Vertical Red Line)
             height, width = annotated.shape[:2]
             center_x = width // 2
-            
-            # --- WARNA DIPAKSA MERAH ---
-            line_color = (0, 0, 255) # Selalu Merah
-
-            # Gambar garis di frame yang akan di-stream
+            line_color = (0, 0, 255) # Red
             cv2.line(annotated, (center_x, 0), (center_x, height), line_color, 2)
 
-            # Encode dan kirim frame
+            # Encode and yield
             ret, buffer = cv2.imencode('.jpg', annotated)
             if not ret:
-                print("Gagal encode frame.")
                 continue
 
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
         except Exception as e:
-            # Blok 'except' tetap penting agar stream tidak mati
-            print(f"❌ Terjadi error di generate_frames: {e}")
-            if last_frame is not None:
-                ret, buffer = cv2.imencode('.jpg', last_frame)
-                if ret:
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+            print(f"❌ Error in generate_frames: {e}")
             time.sleep(0.1)
 
+# --- ROUTES ---
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -341,19 +402,16 @@ def stop_stream():
     streaming = False
     return jsonify({"status": "stream stopped"})
 
-# --- ENDPOINT /alignment_status DIHAPUS ---
-
 @app.route('/capture', methods=['POST'])
 def capture():
     global last_frame
     with frame_lock:
         if last_frame is None:
             return jsonify({"error": "No frame available"}), 500
-        # Menggunakan 'last_frame' yang bersih (tanpa garis panduan)
         frame = last_frame.copy() 
 
     try:
-        results = model(frame)[0] # Proses ulang frame bersih
+        results = model(frame, conf=0.5)[0]
         lines_info = []
 
         for box, cls_id in zip(results.boxes.xyxy, results.boxes.cls):
@@ -370,11 +428,10 @@ def capture():
 
         traits = interpret_traits(lines_info)
         dominant_line = get_dominant_line(lines_info)
-
-        # 'results.plot()' akan menggambar deteksi di frame bersih
+        
+        # Draw detections on clean frame for the result image
         annotated = results.plot() 
         _, buffer = cv2.imencode('.jpg', annotated)
-        # Hasil 'encoded_img' ini TIDAK akan memiliki garis panduan
         encoded_img = base64.b64encode(buffer).decode('utf-8')
 
         trait_dict = {
@@ -407,8 +464,8 @@ def capture():
 
 @atexit.register
 def cleanup():
-    if cap.isOpened():
-        cap.release()
+    if camera:
+        camera.release()
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
