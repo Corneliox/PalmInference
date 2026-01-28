@@ -33,40 +33,48 @@ class VideoCamera:
         
         # Try indices 0 and 1 (common for built-in and external cams)
         for index in [0, 1]:
-            # Try different backends: DSHOW is best for Windows, MSMF is fallback
-            for backend_name, backend in [("DSHOW", cv2.CAP_DSHOW), ("MSMF", cv2.CAP_MSMF), ("ANY", cv2.CAP_ANY)]:
-                print(f"Attempting to initialize camera at index {index} with {backend_name}...")
-                temp_cap = cv2.VideoCapture(index, backend)
-                
-                if temp_cap.isOpened():
-                    # FORCE RESOLUTION & MJPG: Fixes 'Grey/Static/Noise' issues
-                    temp_cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-                    temp_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-                    temp_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-                    temp_cap.set(cv2.CAP_PROP_FPS, 30)
-                    
-                    # Warmup: Read a few frames to ensure the stream is stable
-                    success_warmup = False
-                    for _ in range(5):
-                        ret, frame = temp_cap.read()
-                        if ret and frame is not None and frame.size > 0:
-                            success_warmup = True
-                    
-                    if success_warmup:
-                        self.cap = temp_cap
-                        actual_w = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-                        actual_h = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-                        print(f"✅ Camera initialized successfully on index {index} using {backend_name}")
-                        print(f"ℹ️  Actual Resolution: {int(actual_w)}x{int(actual_h)}")
-                        return
-                    else:
-                        print(f"⚠️ Camera at index {index} ({backend_name}) opened but returned invalid frames.")
-                        temp_cap.release()
-                else:
-                    print(f"⚠️ Failed to open camera at index {index} with {backend_name}")
+            if self._try_init_camera_index(index):
+                return
         
         print("❌ CRITICAL: Could not initialize any camera.")
         self.cap = None
+
+    def _try_init_camera_index(self, index):  # sourcery skip: extract-method
+        """Helper to try initializing a specific camera index with different backends."""
+        for backend_name, backend in [("DSHOW", cv2.CAP_DSHOW), ("MSMF", cv2.CAP_MSMF), ("ANY", cv2.CAP_ANY)]:
+            print(f"Attempting to initialize camera at index {index} with {backend_name}...")
+            temp_cap = cv2.VideoCapture(index, backend)
+            
+            if not temp_cap.isOpened():
+                print(f"⚠️ Failed to open camera at index {index} with {backend_name}")
+                continue
+
+            if self._configure_and_warmup(temp_cap):
+                self.cap = temp_cap
+                actual_w = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+                actual_h = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+                print(f"✅ Camera initialized successfully on index {index} using {backend_name}")
+                print(f"ℹ️  Actual Resolution: {int(actual_w)}x{int(actual_h)}")
+                return True
+            
+            print(f"⚠️ Camera at index {index} ({backend_name}) opened but returned invalid frames.")
+            temp_cap.release()
+        return False
+
+    def _configure_and_warmup(self, cap):
+        """Sets resolution, codec, and warms up the camera to ensure stability."""
+        # FORCE RESOLUTION & MJPG: Fixes 'Grey/Static/Noise' issues
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+        
+        success_warmup = False
+        for _ in range(5):
+            ret, frame = cap.read()
+            if ret and frame is not None and frame.size > 0:
+                success_warmup = True
+        return success_warmup
 
     def get_frame(self):
         """Reads a frame safely. Re-initializes if necessary."""
@@ -124,7 +132,7 @@ def calculate_x_hand_ref(line_data):
             abs(b_x1 - f_x1), abs(b_x1 - f_x2),
             abs(b_x2 - f_x1), abs(b_x2 - f_x2)
         ]
-        x_ref = max(candidates) if candidates else 1.0
+        x_ref = max(candidates, default=1.0)
         return x_ref if x_ref > 0 else 1.0
     # print("Warning: Essential lines for X_hand_ref missing. Using default.")
     return 200.0
